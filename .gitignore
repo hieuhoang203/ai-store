@@ -1,0 +1,25 @@
+# Node
+node_modules/
+
+# NextJS
+.next/
+out/
+
+# Build
+dist/
+build/
+
+# Env
+.env
+.env.*
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

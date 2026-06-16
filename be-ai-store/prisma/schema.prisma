@@ -1,0 +1,378 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  INACTIVE
+  ACTIVE
+  LOCKED
+}
+
+enum RoleName {
+  SUPER_ADMIN
+  ADMIN
+  SUPPORT
+  CUSTOMER
+}
+
+enum InventoryStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+  LOCKED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum DeliveryStatus {
+  PENDING
+  DELIVERED
+  FAILED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum NotificationType {
+  SYSTEM
+  ORDER
+  PAYMENT
+  DELIVERY
+  SUPPORT
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  PAYMENT_WEBHOOK
+  DELIVERY_SENT
+}
+
+enum PaymentProvider {
+  BANKING_QR
+  MOMO
+  ZALOPAY
+  VNPAY
+}
+
+enum AdminLoginTokenStatus {
+  PENDING
+  USED
+  EXPIRED
+  REVOKED
+}
+
+model User {
+  id                 String            @id @default(uuid()) @db.Uuid
+  telegramId         BigInt?           @unique @map("telegram_id") @db.BigInt
+  username           String?           @db.VarChar(100)
+  fullName           String?           @map("full_name") @db.VarChar(255)
+  phone              String?           @db.VarChar(20)
+  email              String?           @db.VarChar(255)
+  status             UserStatus        @default(ACTIVE)
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted          Boolean           @default(false) @map("is_deleted")
+  roles              UserRole[]
+  reservedInventories Inventory[]      @relation("InventoryReservedBy")
+  orders             Order[]
+  tickets            Ticket[]
+  notifications      Notification[]
+  refreshTokens      RefreshToken[]
+  auditLogs          AuditLog[]        @relation("AuditActor")
+  adminLoginTokens   AdminLoginToken[]
+
+  @@index([telegramId], map: "idx_users_telegram")
+  @@index([status], map: "idx_users_status")
+  @@index([createdAt(sort: Desc)], map: "idx_users_created_at")
+  @@map("users")
+}
+
+model Role {
+  id        String     @id @default(uuid()) @db.Uuid
+  name      RoleName   @unique
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted Boolean    @default(false) @map("is_deleted")
+  users     UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  roleId    String   @map("role_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId], map: "uq_user_roles_user_role")
+  @@index([roleId], map: "idx_user_roles_role")
+  @@map("user_roles")
+}
+
+model Product {
+  id          String           @id @default(uuid()) @db.Uuid
+  code        String           @unique @db.VarChar(50)
+  name        String           @db.VarChar(255)
+  description String?
+  category    String?          @db.VarChar(100)
+  imageUrl    String?          @map("image_url") @db.VarChar(500)
+  isActive    Boolean          @default(true) @map("is_active")
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted   Boolean          @default(false) @map("is_deleted")
+  variants    ProductVariant[]
+
+  @@index([category], map: "idx_products_category")
+  @@index([isActive, isDeleted], map: "idx_products_active_deleted")
+  @@index([createdAt(sort: Desc)], map: "idx_products_created_at")
+  @@map("products")
+}
+
+model ProductVariant {
+  id           String      @id @default(uuid()) @db.Uuid
+  productId    String      @map("product_id") @db.Uuid
+  name         String      @db.VarChar(255)
+  durationDays Int?        @map("duration_days")
+  sellPrice    Decimal     @map("sell_price") @db.Decimal(18, 2)
+  warrantyDays Int?        @map("warranty_days")
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted    Boolean     @default(false) @map("is_deleted")
+  product      Product     @relation(fields: [productId], references: [id])
+  inventories  Inventory[]
+  orderItems   OrderItem[]
+
+  @@index([productId], map: "idx_product_variants_product")
+  @@index([active, isDeleted], map: "idx_product_variants_active_deleted")
+  @@map("product_variants")
+}
+
+model Inventory {
+  id                String          @id @default(uuid()) @db.Uuid
+  variantId         String          @map("variant_id") @db.Uuid
+  accountEmail      String?         @map("account_email") @db.VarChar(255)
+  encryptedPassword String?         @map("encrypted_password")
+  metadata          Json?
+  status            InventoryStatus @default(AVAILABLE)
+  reservedBy        String?         @map("reserved_by") @db.Uuid
+  reservedAt        DateTime?       @map("reserved_at") @db.Timestamptz(6)
+  deliveredAt       DateTime?       @map("delivered_at") @db.Timestamptz(6)
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted         Boolean         @default(false) @map("is_deleted")
+  variant           ProductVariant  @relation(fields: [variantId], references: [id])
+  reserver          User?           @relation("InventoryReservedBy", fields: [reservedBy], references: [id])
+  orderItems        OrderItem[]
+  deliveries        Delivery[]
+
+  @@index([variantId], map: "idx_inventory_variant")
+  @@index([status], map: "idx_inventory_status")
+  @@index([reservedBy], map: "idx_inventory_reserved_by")
+  @@map("inventories")
+}
+
+model Order {
+  id            String        @id @default(uuid()) @db.Uuid
+  orderNo       String        @unique @map("order_no") @db.VarChar(50)
+  userId        String        @map("user_id") @db.Uuid
+  subtotal      Decimal       @default(0) @db.Decimal(18, 2)
+  discount      Decimal       @default(0) @db.Decimal(18, 2)
+  totalAmount   Decimal       @default(0) @map("total_amount") @db.Decimal(18, 2)
+  status        OrderStatus   @default(PENDING)
+  paymentStatus PaymentStatus @default(PENDING) @map("payment_status")
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted     Boolean       @default(false) @map("is_deleted")
+  user          User          @relation(fields: [userId], references: [id])
+  items         OrderItem[]
+  payments      Payment[]
+  tickets       Ticket[]
+
+  @@index([userId], map: "idx_orders_user")
+  @@index([status], map: "idx_orders_status")
+  @@index([paymentStatus], map: "idx_orders_payment_status")
+  @@index([createdAt(sort: Desc)], map: "idx_orders_created")
+  @@map("orders")
+}
+
+model OrderItem {
+  id          String         @id @default(uuid()) @db.Uuid
+  orderId     String         @map("order_id") @db.Uuid
+  variantId   String         @map("variant_id") @db.Uuid
+  inventoryId String?        @map("inventory_id") @db.Uuid
+  quantity    Int            @default(1)
+  unitPrice   Decimal        @map("unit_price") @db.Decimal(18, 2)
+  totalPrice  Decimal        @map("total_price") @db.Decimal(18, 2)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted   Boolean        @default(false) @map("is_deleted")
+  order       Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+  inventory   Inventory?     @relation(fields: [inventoryId], references: [id])
+  deliveries  Delivery[]
+
+  @@index([orderId], map: "idx_order_items_order")
+  @@index([variantId], map: "idx_order_items_variant")
+  @@index([inventoryId], map: "idx_order_items_inventory")
+  @@map("order_items")
+}
+
+model Payment {
+  id             String          @id @default(uuid()) @db.Uuid
+  orderId        String          @map("order_id") @db.Uuid
+  provider       PaymentProvider @default(BANKING_QR)
+  amount         Decimal         @db.Decimal(18, 2)
+  transactionNo  String?         @map("transaction_no") @db.VarChar(255)
+  paymentContent String?         @map("payment_content") @db.VarChar(255)
+  qrContent      String?         @map("qr_content")
+  status         PaymentStatus   @default(PENDING)
+  paidAt         DateTime?       @map("paid_at") @db.Timestamptz(6)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted      Boolean         @default(false) @map("is_deleted")
+  order          Order           @relation(fields: [orderId], references: [id])
+
+  @@index([orderId], map: "idx_payment_order")
+  @@index([status], map: "idx_payments_status")
+  @@index([provider], map: "idx_payments_provider")
+  @@map("payments")
+}
+
+model Delivery {
+  id              String         @id @default(uuid()) @db.Uuid
+  orderItemId     String         @map("order_item_id") @db.Uuid
+  inventoryId     String         @map("inventory_id") @db.Uuid
+  deliveryContent String?        @map("delivery_content")
+  deliveredAt     DateTime?      @map("delivered_at") @db.Timestamptz(6)
+  status          DeliveryStatus @default(PENDING)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted       Boolean        @default(false) @map("is_deleted")
+  orderItem       OrderItem      @relation(fields: [orderItemId], references: [id])
+  inventory       Inventory      @relation(fields: [inventoryId], references: [id])
+
+  @@index([orderItemId], map: "idx_deliveries_order_item")
+  @@index([inventoryId], map: "idx_deliveries_inventory")
+  @@index([status], map: "idx_deliveries_status")
+  @@map("deliveries")
+}
+
+model Ticket {
+  id        String       @id @default(uuid()) @db.Uuid
+  userId    String       @map("user_id") @db.Uuid
+  orderId   String?      @map("order_id") @db.Uuid
+  subject   String       @db.VarChar(255)
+  content   String
+  status    TicketStatus @default(OPEN)
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted Boolean      @default(false) @map("is_deleted")
+  user      User         @relation(fields: [userId], references: [id])
+  order     Order?       @relation(fields: [orderId], references: [id])
+
+  @@index([userId], map: "idx_tickets_user")
+  @@index([orderId], map: "idx_tickets_order")
+  @@index([status], map: "idx_tickets_status")
+  @@map("tickets")
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  type      NotificationType @default(SYSTEM)
+  title     String           @db.VarChar(255)
+  content   String
+  isRead    Boolean          @default(false) @map("is_read")
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted Boolean          @default(false) @map("is_deleted")
+  user      User             @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "idx_notification_user")
+  @@index([isRead], map: "idx_notifications_read")
+  @@map("notifications")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @map("token_hash")
+  expiredAt DateTime @map("expired_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_refresh_tokens_user")
+  @@index([expiredAt], map: "idx_refresh_tokens_expired_at")
+  @@map("refresh_tokens")
+}
+
+model AdminLoginToken {
+  id        String                @id @default(uuid()) @db.Uuid
+  userId    String                @map("user_id") @db.Uuid
+  tokenHash String                @unique @map("token_hash")
+  status    AdminLoginTokenStatus @default(PENDING)
+  expiredAt DateTime              @map("expired_at") @db.Timestamptz(6)
+  usedAt    DateTime?             @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted Boolean               @default(false) @map("is_deleted")
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_admin_login_tokens_user")
+  @@index([status, expiredAt], map: "idx_admin_login_tokens_status_expired")
+  @@map("admin_login_tokens")
+}
+
+model AuditLog {
+  id         String      @id @default(uuid()) @db.Uuid
+  actorId    String?     @map("actor_id") @db.Uuid
+  entityName String      @map("entity_name") @db.VarChar(100)
+  entityId   String?     @map("entity_id") @db.Uuid
+  action     AuditAction
+  oldData    Json?       @map("old_data")
+  newData    Json?       @map("new_data")
+  ipAddress  String?     @map("ip_address") @db.VarChar(64)
+  userAgent  String?     @map("user_agent") @db.VarChar(500)
+  createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted  Boolean     @default(false) @map("is_deleted")
+  actor      User?       @relation("AuditActor", fields: [actorId], references: [id])
+
+  @@index([actorId], map: "idx_audit_logs_actor")
+  @@index([entityName, entityId], map: "idx_audit_logs_entity")
+  @@index([createdAt(sort: Desc)], map: "idx_audit_logs_created_at")
+  @@map("audit_logs")
+}

@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+:root {
+  --background: #050805;
+  --foreground: #f4fff7;
+  --spotify-green: #1ed760;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-roboto);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background:
+    radial-gradient(circle at 20% -10%, rgba(30, 215, 96, 0.16), transparent 28rem),
+    linear-gradient(180deg, #071008 0%, #050805 34%, #020302 100%);
+  color: var(--foreground);
+  font-family: var(--font-roboto), Arial, Helvetica, sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(30, 215, 96, 0.35);
+}
+
+.smooth-panel {
+  animation: panel-in 320ms ease both;
+}
+
+.toast-in {
+  animation: toast-in 240ms ease both;
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

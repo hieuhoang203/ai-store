@@ -75,6 +75,10 @@ export function AdminConsole() {
     setDashboard(await getDashboard());
   }, []);
 
+  const loadEntities = useCallback(async () => {
+    setEntities(await getAdminEntities());
+  }, []);
+
   const loadList = useCallback(async () => {
     if (!activeEntity) {
       setList(null);
@@ -95,8 +99,7 @@ export function AdminConsole() {
     async function bootstrap() {
       setLoading(true);
       try {
-        const [entityData] = await Promise.all([getAdminEntities(), loadDashboard()]);
-        setEntities(entityData);
+        await Promise.all([loadEntities(), loadDashboard()]);
       } catch (error) {
         showToast("error", error instanceof Error ? error.message : "Không kết nối được backend");
       } finally {
@@ -105,7 +108,7 @@ export function AdminConsole() {
     }
 
     bootstrap();
-  }, [loadDashboard, showToast]);
+  }, [loadDashboard, loadEntities, showToast]);
 
   useEffect(() => {
     loadList();
@@ -121,10 +124,10 @@ export function AdminConsole() {
 
   const refreshAll = () => {
     if (isDashboardScreen(activeKey)) {
-      return loadDashboard();
+      return Promise.all([loadEntities(), loadDashboard()]);
     }
 
-    return Promise.all([loadDashboard(), loadList()]);
+    return Promise.all([loadEntities(), loadDashboard(), loadList()]);
   };
 
   const openCreate = () => {

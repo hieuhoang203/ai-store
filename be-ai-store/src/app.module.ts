@@ -31,7 +31,7 @@ import { UsersModule } from './users/users.module';
         JWT_ACCESS_SECRET: Joi.string().default('dev-access-secret'),
         JWT_REFRESH_SECRET: Joi.string().default('dev-refresh-secret'),
         TELEGRAM_BOT_TOKEN: Joi.string().allow('').default(''),
-        TELEGRAM_MINIAPP_URL: Joi.string().uri().default('http://localhost:0405'),
+        TELEGRAM_MINIAPP_URL: Joi.string().uri().default('https://5f44-118-71-35-247.ngrok-free.app'),
         ADMIN_APP_URL: Joi.string().uri().default('http://localhost:2110'),
       }),
     }),

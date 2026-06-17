@@ -68,7 +68,7 @@ export function CartView({
         </article>
       ))}
 
-      <div className="sticky bottom-20 rounded-2xl border border-emerald-300/25 bg-[#071008]/95 p-3 shadow-2xl shadow-black/50 backdrop-blur">
+      <div className="sticky bottom-3 rounded-2xl border border-emerald-300/25 bg-[#071008]/95 p-3 shadow-2xl shadow-black/50 backdrop-blur">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-semibold text-zinc-400">Tổng thanh toán</span>
           <span className="text-lg font-black text-emerald-300">{total.toLocaleString("vi-VN")} đ</span>

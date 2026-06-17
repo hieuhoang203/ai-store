@@ -5,6 +5,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { ADMIN_ENTITIES, ADMIN_ENTITY_MAP } from '../models/admin-entity.model';
 import {
   AdminEntityConfig,
+  AdminEntitySummary,
   AdminFieldConfig,
   AdminListQuery,
 } from '../interfaces/admin-crud.interface';
@@ -17,8 +18,13 @@ export class AdminService {
     private readonly prisma: PrismaService,
   ) {}
 
-  getEntities() {
-    return ADMIN_ENTITIES;
+  async getEntities(): Promise<AdminEntitySummary[]> {
+    return Promise.all(
+      ADMIN_ENTITIES.map(async (entity) => ({
+        ...entity,
+        count: await this.repository.count(entity),
+      })),
+    );
   }
 
   async list(entityKey: string, query: AdminListQuery) {

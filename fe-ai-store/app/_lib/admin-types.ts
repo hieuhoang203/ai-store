@@ -27,6 +27,7 @@ export type EntityConfig = {
   key: string;
   label: string;
   softDelete?: boolean;
+  count?: number;
   defaultSort?: string;
   fields: FieldConfig[];
 };

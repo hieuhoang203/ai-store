@@ -16,6 +16,12 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   background:
@@ -24,6 +30,10 @@ body {
     linear-gradient(180deg, #071008 0%, #050805 42%, #020302 100%);
   color: var(--foreground);
   font-family: var(--font-roboto), Arial, Helvetica, sans-serif;
+}
+
+body > div {
+  height: 100%;
 }
 
 button,

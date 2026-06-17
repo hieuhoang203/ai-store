@@ -19,7 +19,7 @@ export function BottomNav({
   onSelect: (tab: TabKey) => void;
 }) {
   return (
-    <nav className="fixed bottom-0 left-1/2 z-20 grid w-full max-w-md -translate-x-1/2 grid-cols-5 border-t border-white/10 bg-[#050805]/95 px-2 py-2 backdrop-blur-xl">
+    <nav className="relative z-20 grid shrink-0 grid-cols-5 border-t border-white/10 bg-[#050805]/95 px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl">
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const active = activeTab === tab.key;

@@ -41,6 +41,10 @@ export interface AdminEntityConfig {
   fields: AdminFieldConfig[];
 }
 
+export interface AdminEntitySummary extends AdminEntityConfig {
+  count: number;
+}
+
 export interface AdminListQuery {
   page?: number;
   limit?: number;

@@ -36,21 +36,36 @@ export function LeftMenu({ entities, activeKey, onSelect }: LeftMenuProps) {
 
         <div className="my-2 h-px bg-white/10" />
 
-        {entities.map((entity) => (
-          <button
-            key={entity.key}
-            onClick={() => onSelect(entity.key)}
-            className={`flex h-10 items-center justify-between rounded-lg px-3 text-left text-sm font-medium transition ${
-              activeKey === entity.key
-                ? "bg-emerald-400 text-black shadow-[0_0_24px_rgba(30,215,96,0.22)]"
-                : "text-zinc-300 hover:bg-white/8 hover:text-white"
-            }`}
-          >
-            <span>{entity.label}</span>
-            {entity.softDelete ? <span className="text-xs opacity-70">soft</span> : null}
-          </button>
-        ))}
+        {entities.map((entity) => {
+          const isActive = activeKey === entity.key;
+
+          return (
+            <button
+              key={entity.key}
+              onClick={() => onSelect(entity.key)}
+              className={`flex h-10 items-center justify-between gap-3 rounded-lg px-3 text-left text-sm font-medium transition ${
+                isActive
+                  ? "bg-emerald-400 text-black shadow-[0_0_24px_rgba(30,215,96,0.22)]"
+                  : "text-zinc-300 hover:bg-white/8 hover:text-white"
+              }`}
+            >
+              <span className="min-w-0 truncate">{entity.label}</span>
+              <span
+                className={`inline-flex min-w-7 shrink-0 justify-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  isActive ? "bg-black/15 text-black" : "bg-white/8 text-zinc-300"
+                }`}
+              >
+                {formatCount(entity.count)}
+              </span>
+            </button>
+          );
+        })}
       </nav>
     </aside>
   );
+}
+
+function formatCount(count: number | undefined) {
+  if (count === undefined) return "-";
+  return new Intl.NumberFormat("en-US", { notation: count > 9999 ? "compact" : "standard" }).format(count);
 }

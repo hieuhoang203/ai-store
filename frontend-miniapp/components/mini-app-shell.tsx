@@ -55,10 +55,10 @@ export function MiniAppShell() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col overflow-hidden border-x border-white/10 bg-[#050805]/72 pb-24 shadow-2xl shadow-black/50">
+    <main className="mx-auto flex h-screen min-h-[100dvh] max-w-md flex-col overflow-hidden border-x border-white/10 bg-[#050805]/72 shadow-2xl shadow-black/50">
       <ToastBanner toast={toast} />
 
-      <section className="flex-1 space-y-5 px-4 pb-4 pt-4">
+      <section className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-4 pt-4">
         {activeTab === "home" ? (
           <>
             <TopSummary cartCount={cartCount} />

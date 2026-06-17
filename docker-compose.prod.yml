@@ -1,0 +1,36 @@
+services:
+  backend:
+    build:
+      context: ./be-ai-store
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-8903}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is required}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
+      TELEGRAM_MINIAPP_URL: ${TELEGRAM_MINIAPP_URL:-http://localhost:0405}
+      ADMIN_APP_URL: ${ADMIN_APP_URL:-http://localhost:2110}
+    ports:
+      - "${PORT:-8903}:8903"
+
+  frontend-admin:
+    build:
+      context: ./fe-ai-store
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL is required}
+    ports:
+      - "${ADMIN_PORT:-2110}:2110"
+    depends_on:
+      - backend
+
+  frontend-miniapp:
+    build:
+      context: ./frontend-miniapp
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL is required}
+    ports:
+      - "${MINIAPP_PORT:-0405}:405"
+    depends_on:
+      - backend

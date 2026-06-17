@@ -18,7 +18,7 @@ Services:
 
 - Use managed PostgreSQL on Aiven.
 - Use Upstash or managed Redis for BullMQ and cache.
-- Store `DATABASE_URL`, `REDIS_URL`, `TELEGRAM_BOT_TOKEN`, JWT secrets, and MinIO secrets in a secret manager.
+- Store `DATABASE_URL`, `REDIS_URL`, `TELEGRAM_BOT_TOKEN`, JWT secrets, payOS secrets, and MinIO secrets in a secret manager.
 - Replace `sslmode=no-verify` with `sslmode=verify-full` and Aiven CA certificate before production.
 - Run Prisma migrations only after backing up the database and completing status enum data migration.
 
@@ -33,7 +33,13 @@ Required backend variables:
 - `TELEGRAM_BOT_TOKEN`
 - `JWT_ACCESS_SECRET`
 - `JWT_REFRESH_SECRET`
-- `NEXT_PUBLIC_API_BASE_URL`
+- `PAYOS_CLIENT_ID`
+- `PAYOS_API_KEY`
+- `PAYOS_CHECKSUM_KEY`
+
+Frontend Mini App variables:
+
+- `BACKEND_INTERNAL_URL` defaults to `http://backend:8903` in Docker Compose.
 
 Example:
 
@@ -43,7 +49,9 @@ REDIS_URL='rediss://...' \
 TELEGRAM_BOT_TOKEN='...' \
 JWT_ACCESS_SECRET='...' \
 JWT_REFRESH_SECRET='...' \
-NEXT_PUBLIC_API_BASE_URL='https://api.example.com' \
+PAYOS_CLIENT_ID='...' \
+PAYOS_API_KEY='...' \
+PAYOS_CHECKSUM_KEY='...' \
 docker compose -f docker-compose.prod.yml up --build -d
 ```
 

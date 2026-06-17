@@ -12,6 +12,16 @@ export class ProductsController {
     return this.productsService.listPublicProducts();
   }
 
+  @Get('categories')
+  listCategories() {
+    return this.productsService.listActiveCategories();
+  }
+
+  @Get('categories/:categoryId')
+  listByCategory(@Param('categoryId') categoryId: string) {
+    return this.productsService.listPublicProductsByCategory(categoryId);
+  }
+
   @Get(':id')
   detail(@Param('id') id: string) {
     return this.productsService.detail(id);

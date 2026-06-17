@@ -29,21 +29,37 @@ const TelegramContext = createContext<TelegramContextValue>({
 
 export function TelegramProvider({ children }: { children: React.ReactNode }) {
   const [webApp, setWebApp] = useState<TelegramWebApp | undefined>();
+  const [fallbackInitData, setFallbackInitData] = useState("");
 
   useEffect(() => {
-    const app = window.Telegram?.WebApp;
-    app?.ready?.();
-    app?.expand?.();
-    setWebApp(app);
+    setFallbackInitData(readInitDataFromUrl());
+
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      attempts += 1;
+      const app = window.Telegram?.WebApp;
+
+      if (app) {
+        app.ready?.();
+        app.expand?.();
+        setWebApp(app);
+      }
+
+      if (app?.initData || attempts >= 40) {
+        window.clearInterval(timer);
+      }
+    }, 50);
+
+    return () => window.clearInterval(timer);
   }, []);
 
   const value = useMemo(
     () => ({
       webApp,
-      initData: webApp?.initData || "",
-      isTelegram: Boolean(webApp),
+      initData: webApp?.initData || fallbackInitData,
+      isTelegram: Boolean(webApp) || Boolean(fallbackInitData),
     }),
-    [webApp],
+    [fallbackInitData, webApp],
   );
 
   return <TelegramContext.Provider value={value}>{children}</TelegramContext.Provider>;
@@ -51,6 +67,14 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
 
 export function useTelegramContext() {
   return useContext(TelegramContext);
+}
+
+function readInitDataFromUrl() {
+  if (typeof window === "undefined") return "";
+
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const searchParams = new URLSearchParams(window.location.search);
+  return hashParams.get("tgWebAppData") || searchParams.get("tgWebAppData") || "";
 }
 
 declare global {

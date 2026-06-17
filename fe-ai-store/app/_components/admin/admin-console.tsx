@@ -136,9 +136,15 @@ export function AdminConsole() {
     setModal({ type: "create" });
   };
 
-  const openEdit = (record: Record<string, unknown>) => {
-    setForm(toFormValues(record));
-    setModal({ type: "edit", record });
+  const openEdit = async (record: Record<string, unknown>) => {
+    try {
+      if (!activeEntity) return;
+      const fullRecord = await getEntityDetail(activeEntity.key, record.__recordId);
+      setForm(toFormValues(fullRecord));
+      setModal({ type: "edit", record: fullRecord });
+    } catch (error) {
+      showToast("error", error instanceof Error ? error.message : "KhÃ´ng táº£i Ä‘Æ°á»£c chi tiáº¿t");
+    }
   };
 
   const openDetail = async (record: Record<string, unknown>) => {

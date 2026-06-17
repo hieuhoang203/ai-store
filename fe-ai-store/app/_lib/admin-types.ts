@@ -8,7 +8,8 @@ export type FieldType =
   | "boolean"
   | "date"
   | "json"
-  | "enum";
+  | "enum"
+  | "relation";
 
 export type FieldConfig = {
   name: string;
@@ -17,10 +18,16 @@ export type FieldConfig = {
   required?: boolean;
   readonly?: boolean;
   hidden?: boolean;
+  virtual?: boolean;
   list?: boolean;
   create?: boolean;
   update?: boolean;
   options?: { label: string; value: string | number | boolean }[];
+  relation?: {
+    entityKey: string;
+    labelField: string;
+    valueField?: string;
+  };
 };
 
 export type EntityConfig = {

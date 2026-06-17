@@ -31,7 +31,7 @@ export function FieldInput({ field, value, onChange }: FieldInputProps) {
     );
   }
 
-  if (field.type === "enum") {
+  if (field.type === "enum" || field.type === "relation") {
     return (
       <select
         className={base}

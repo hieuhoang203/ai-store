@@ -22,6 +22,12 @@ export class AdminService {
     return Promise.all(
       ADMIN_ENTITIES.map(async (entity) => ({
         ...entity,
+        fields: await Promise.all(
+          entity.fields.map(async (field) => ({
+            ...field,
+            options: field.relation ? await this.getRelationOptions(field) : field.options,
+          })),
+        ),
         count: await this.repository.count(entity),
       })),
     );
@@ -40,19 +46,39 @@ export class AdminService {
 
   async detail(entityKey: string, recordId: string) {
     const config = this.getConfig(entityKey);
-    return this.serializeRecord(config, await this.repository.detail(config, recordId));
+    const record = this.serializeRecord(config, await this.repository.detail(config, recordId));
+
+    if (entityKey === 'users') {
+      record.roleId = await this.getUserRoleId(String(record.__recordId));
+    }
+
+    return record;
   }
 
   async create(entityKey: string, payload: Record<string, unknown>) {
     const config = this.getConfig(entityKey);
+    const roleId = entityKey === 'users' ? payload.roleId : undefined;
     const data = this.sanitizePayload(config, payload, 'create');
-    return this.serializeRecord(config, await this.repository.create(config, data));
+    const record = await this.repository.create(config, data);
+
+    if (entityKey === 'users' && roleId) {
+      await this.assignUserRole(String((record as Record<string, unknown>).id), String(roleId));
+    }
+
+    return this.serializeRecord(config, record);
   }
 
   async update(entityKey: string, recordId: string, payload: Record<string, unknown>) {
     const config = this.getConfig(entityKey);
+    const roleId = entityKey === 'users' ? payload.roleId : undefined;
     const data = this.sanitizePayload(config, payload, 'update');
-    return this.serializeRecord(config, await this.repository.update(config, recordId, data));
+    const record = await this.repository.update(config, recordId, data);
+
+    if (entityKey === 'users' && roleId !== undefined) {
+      await this.assignUserRole(recordId, roleId ? String(roleId) : null);
+    }
+
+    return this.serializeRecord(config, record);
   }
 
   async remove(entityKey: string, recordId: string) {
@@ -160,6 +186,7 @@ export class AdminService {
   ) {
     const data: Record<string, unknown> = {};
     const writableFields = config.fields.filter((field) => {
+      if (field.virtual) return false;
       if (field.readonly || field.hidden) return false;
       if (mode === 'create' && field.create === false) return false;
       if (mode === 'update' && field.update === false) return false;
@@ -188,6 +215,7 @@ export class AdminService {
       case 'int':
         return Number(value);
       case 'enum':
+      case 'relation':
         return String(value);
       case 'bigint':
         return BigInt(String(value));
@@ -235,5 +263,78 @@ export class AdminService {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     return now;
+  }
+
+  private async getRelationOptions(field: AdminFieldConfig) {
+    if (!field.relation) return [];
+
+    const config = this.getConfig(field.relation.entityKey);
+    const delegate = (this.prisma as unknown as Record<string, any>)[config.delegate];
+    const valueField = field.relation.valueField || 'id';
+    const labelField = field.relation.labelField;
+    const records = await delegate.findMany({
+      where: config.softDelete ? { isDeleted: false } : undefined,
+      take: 200,
+      orderBy: this.getRelationOrderBy(config, labelField),
+    });
+
+    return records.map((record: Record<string, unknown>) => ({
+      label: this.getRelationLabel(record, labelField),
+      value: String(record[valueField]),
+    }));
+  }
+
+  private getRelationOrderBy(config: AdminEntityConfig, labelField: string) {
+    const hasLabelField = config.fields.some((field) => field.name === labelField);
+    if (hasLabelField) return { [labelField]: 'asc' };
+    return { [config.defaultSort || 'createdAt']: 'desc' };
+  }
+
+  private getRelationLabel(record: Record<string, unknown>, labelField: string) {
+    const primary = record[labelField];
+    const fallback =
+      record.name ||
+      record.email ||
+      record.username ||
+      record.fullName ||
+      record.orderNo ||
+      record.code ||
+      record.id;
+
+    return String(primary || fallback || '-');
+  }
+
+  private async getUserRoleId(userId: string) {
+    const userRole = await this.prisma.userRole.findFirst({
+      where: { userId, isDeleted: false },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    return userRole?.roleId || null;
+  }
+
+  private async assignUserRole(userId: string, roleId: string | null) {
+    await this.prisma.userRole.updateMany({
+      where: roleId ? { userId, roleId: { not: roleId } } : { userId },
+      data: { isDeleted: true },
+    });
+
+    if (!roleId) return;
+
+    const existing = await this.prisma.userRole.findFirst({
+      where: { userId, roleId },
+    });
+
+    if (existing) {
+      await this.prisma.userRole.update({
+        where: { id: existing.id },
+        data: { isDeleted: false },
+      });
+      return;
+    }
+
+    await this.prisma.userRole.create({
+      data: { userId, roleId },
+    });
   }
 }

@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsArray, IsInt, IsUUID, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsInt, IsString, IsUUID, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CheckoutItemDto {
@@ -14,9 +14,9 @@ export class CheckoutItemDto {
 }
 
 export class CheckoutDto {
-  @ApiProperty()
-  @IsUUID()
-  userId!: string;
+  @ApiProperty({ description: 'Telegram Mini App initData string' })
+  @IsString()
+  initData!: string;
 
   @ApiProperty({ type: [CheckoutItemDto] })
   @IsArray()

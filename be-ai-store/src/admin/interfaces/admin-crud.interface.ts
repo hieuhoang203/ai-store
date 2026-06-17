@@ -8,7 +8,8 @@ export type AdminFieldType =
   | 'boolean'
   | 'date'
   | 'json'
-  | 'enum';
+  | 'enum'
+  | 'relation';
 
 export interface AdminEnumOption {
   label: string;
@@ -22,10 +23,16 @@ export interface AdminFieldConfig {
   required?: boolean;
   readonly?: boolean;
   hidden?: boolean;
+  virtual?: boolean;
   list?: boolean;
   create?: boolean;
   update?: boolean;
   options?: AdminEnumOption[];
+  relation?: {
+    entityKey: string;
+    labelField: string;
+    valueField?: string;
+  };
 }
 
 export interface AdminEntityConfig {

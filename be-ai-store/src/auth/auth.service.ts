@@ -20,6 +20,12 @@ export class AuthService {
   ) {}
 
   async loginWithTelegramInitData(initData: string) {
+    const user = await this.getOrCreateTelegramUser(initData);
+
+    return this.issueTokens(user.id, [RoleName.CUSTOMER]);
+  }
+
+  async getOrCreateTelegramUser(initData: string) {
     const botToken = this.configService.get<string>('TELEGRAM_BOT_TOKEN');
     if (!botToken) {
       throw new BadRequestException('TELEGRAM_BOT_TOKEN is not configured');
@@ -33,7 +39,7 @@ export class AuthService {
       throw new UnauthorizedException('Telegram user payload is missing');
     }
 
-    const user = await this.prisma.user.upsert({
+    return this.prisma.user.upsert({
       where: { telegramId: BigInt(telegramUser.id) },
       create: {
         telegramId: BigInt(telegramUser.id),
@@ -50,8 +56,6 @@ export class AuthService {
           .join(' '),
       },
     });
-
-    return this.issueTokens(user.id, [RoleName.CUSTOMER]);
   }
 
   async createAdminLoginToken(userId: string) {

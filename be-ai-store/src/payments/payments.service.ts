@@ -1,59 +1,167 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
+  Order,
   OrderStatus,
   PaymentProvider,
   PaymentStatus,
+  Prisma,
+  Product,
+  ProductVariant,
 } from '../../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service';
 import { DeliveriesService } from '../deliveries/deliveries.service';
 import { InventoriesService } from '../inventories/inventories.service';
-import { BankingQrAdapter } from './adapters/banking-qr.adapter';
+import { PayosService } from './payos/payos.service';
+import { PayosWebhookBody } from './payos/payos.types';
+
+type OrderForPayment = Order & {
+  items: Array<{
+    id: string;
+    variantId: string;
+    quantity: number;
+    unitPrice: Prisma.Decimal;
+    totalPrice: Prisma.Decimal;
+    variant: ProductVariant & { product: Product };
+  }>;
+};
 
 @Injectable()
 export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly bankingQrAdapter: BankingQrAdapter,
+    private readonly payosService: PayosService,
     private readonly inventoriesService: InventoriesService,
     private readonly deliveriesService: DeliveriesService,
+    private readonly configService: ConfigService,
   ) {}
 
-  async createBankingQrPayment(orderId: string) {
+  async createPayosPayment(orderId: string) {
     const order = await this.prisma.order.findUniqueOrThrow({
       where: { id: orderId },
+      include: {
+        items: {
+          include: {
+            variant: { include: { product: true } },
+          },
+        },
+      },
     });
-    const amount = order.totalAmount.toString();
-    const paymentContent = this.bankingQrAdapter.createPaymentContent(order.orderNo, amount);
 
+    const amount = this.toVndInteger(order.totalAmount);
     const payment = await this.prisma.payment.create({
       data: {
         orderId: order.id,
         provider: PaymentProvider.BANKING_QR,
         amount: order.totalAmount,
-        paymentContent,
         status: PaymentStatus.PENDING,
       },
     });
+    const paymentContent = this.createPaymentContent(payment.id);
 
-    return this.prisma.payment.update({
+    await this.prisma.payment.update({
       where: { id: payment.id },
-      data: {
-        qrContent: this.bankingQrAdapter.createQrContent(payment),
-      },
+      data: { paymentContent },
     });
+
+    try {
+      const paymentLink = await this.payosService.createPaymentLink({
+        orderCode: this.getPayosOrderCode(order.orderNo),
+        amount,
+        description: paymentContent,
+        items: this.toPayosItems(order),
+        returnUrl: this.getMiniAppUrl('payment=success'),
+        cancelUrl: this.getMiniAppUrl('payment=cancelled'),
+      });
+
+      return this.prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          transactionNo: paymentLink.paymentLinkId,
+          qrContent: JSON.stringify({
+            provider: 'PAYOS',
+            amount: paymentLink.amount,
+            currency: paymentLink.currency,
+            content: paymentLink.description,
+            orderCode: paymentLink.orderCode,
+            paymentLinkId: paymentLink.paymentLinkId,
+            checkoutUrl: paymentLink.checkoutUrl,
+            qrCode: paymentLink.qrCode,
+            accountNumber: paymentLink.accountNumber,
+            accountName: paymentLink.accountName,
+            bin: paymentLink.bin,
+          }),
+        },
+      });
+    } catch (error) {
+      await this.prisma.payment.update({
+        where: { id: payment.id },
+        data: { status: PaymentStatus.FAILED },
+      });
+      throw error;
+    }
+  }
+
+  async handlePayosWebhook(body: PayosWebhookBody) {
+    const data = this.payosService.verifyWebhook(body);
+
+    if (!body.success || body.code !== '00' || data.code !== '00') {
+      return { ok: true };
+    }
+
+    const orderCode = Number(data.orderCode);
+    const amount = Number(data.amount);
+    const paymentLinkId = String(data.paymentLinkId || '');
+    const description = String(data.description || '');
+
+    if (!Number.isSafeInteger(orderCode) || amount <= 0 || !paymentLinkId) {
+      throw new BadRequestException('Invalid payOS webhook data');
+    }
+
+    const order = await this.prisma.order.findUniqueOrThrow({
+      where: { orderNo: `AI${orderCode}` },
+      include: { payments: true },
+    });
+    const payment = order.payments.find((record) => record.transactionNo === paymentLinkId);
+
+    if (!payment) {
+      throw new BadRequestException('Payment link does not match order');
+    }
+
+    if (this.toVndInteger(payment.amount) !== amount) {
+      throw new BadRequestException('Payment amount does not match order amount');
+    }
+
+    if (payment.paymentContent !== description) {
+      throw new BadRequestException('Payment description does not match');
+    }
+
+    await this.confirmPayment(payment.id);
+    return { ok: true };
   }
 
   async confirmPayment(paymentId: string) {
-    const payment = await this.prisma.payment.update({
-      where: { id: paymentId },
+    const updated = await this.prisma.payment.updateMany({
+      where: {
+        id: paymentId,
+        status: { not: PaymentStatus.PAID },
+      },
       data: {
         status: PaymentStatus.PAID,
         paidAt: new Date(),
       },
+    });
+
+    const payment = await this.prisma.payment.findUniqueOrThrow({
+      where: { id: paymentId },
       include: {
         order: { include: { items: true } },
       },
     });
+
+    if (!updated.count) {
+      return payment;
+    }
 
     await this.prisma.order.update({
       where: { id: payment.orderId },
@@ -78,5 +186,44 @@ export class PaymentsService {
     }
 
     return payment;
+  }
+
+  private createPaymentContent(paymentId: string) {
+    const serviceName = this.configService.get<string>('PAYOS_PAYMENT_DESCRIPTION_PREFIX') || 'AI Store';
+    return `${serviceName} ${paymentId}`;
+  }
+
+  private getPayosOrderCode(orderNo: string) {
+    const orderCode = Number(orderNo.replace(/^AI/, ''));
+    if (!Number.isSafeInteger(orderCode)) {
+      throw new BadRequestException('Invalid order code');
+    }
+    return orderCode;
+  }
+
+  private toPayosItems(order: OrderForPayment) {
+    return order.items.map((item) => ({
+      name: `${item.variant.product.name} - ${item.variant.name}`.slice(0, 255),
+      quantity: item.quantity,
+      price: this.toVndInteger(item.unitPrice),
+    }));
+  }
+
+  private toVndInteger(value: Prisma.Decimal) {
+    const integer = value.toDecimalPlaces(0);
+    if (!integer.equals(value)) {
+      throw new BadRequestException('Payment amount must be an integer VND amount');
+    }
+    const amount = integer.toNumber();
+    if (!Number.isSafeInteger(amount) || amount <= 0) {
+      throw new BadRequestException('Invalid payment amount');
+    }
+    return amount;
+  }
+
+  private getMiniAppUrl(paymentStatus: string) {
+    const miniAppUrl = this.configService.get<string>('TELEGRAM_MINIAPP_URL') || 'http://localhost:405';
+    const separator = miniAppUrl.includes('?') ? '&' : '?';
+    return `${miniAppUrl}${separator}${paymentStatus}`;
   }
 }

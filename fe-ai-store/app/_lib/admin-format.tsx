@@ -27,7 +27,7 @@ export function renderValue(field: FieldConfig, value: unknown) {
     );
   }
 
-  if (field.type === "enum") {
+  if (field.type === "enum" || field.type === "relation") {
     const option = field.options?.find((item) => String(item.value) === String(value));
 
     return (

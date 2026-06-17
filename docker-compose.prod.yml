@@ -12,6 +12,11 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
       TELEGRAM_MINIAPP_URL: ${TELEGRAM_MINIAPP_URL:-http://localhost:0405}
       ADMIN_APP_URL: ${ADMIN_APP_URL:-http://localhost:2110}
+      PAYOS_CLIENT_ID: ${PAYOS_CLIENT_ID:?PAYOS_CLIENT_ID is required}
+      PAYOS_API_KEY: ${PAYOS_API_KEY:?PAYOS_API_KEY is required}
+      PAYOS_CHECKSUM_KEY: ${PAYOS_CHECKSUM_KEY:?PAYOS_CHECKSUM_KEY is required}
+      PAYOS_API_BASE_URL: ${PAYOS_API_BASE_URL:-https://api-merchant.payos.vn}
+      PAYOS_PAYMENT_DESCRIPTION_PREFIX: ${PAYOS_PAYMENT_DESCRIPTION_PREFIX:-AI Store}
     ports:
       - "${PORT:-8903}:8903"
 
@@ -29,7 +34,7 @@ services:
     build:
       context: ./frontend-miniapp
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL is required}
+      BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8903}
     ports:
       - "${MINIAPP_PORT:-0405}:405"
     depends_on:

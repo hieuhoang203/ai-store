@@ -6,6 +6,7 @@ export type ProductVariant = {
   sellPrice: string;
   durationDays?: number | null;
   warrantyDays?: number | null;
+  availableStock?: number;
 };
 
 export type Product = {

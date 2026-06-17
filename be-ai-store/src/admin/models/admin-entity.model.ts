@@ -146,7 +146,7 @@ export const ADMIN_ENTITIES: AdminEntityConfig[] = [
       { name: 'id', label: 'ID', type: 'uuid', readonly: true, list: false, create: false, update: false },
       { name: 'variantId', label: 'Variant', type: 'relation', required: true, list: true, relation: { entityKey: 'product-variants', labelField: 'name' } },
       { name: 'accountEmail', label: 'Account email', type: 'string', list: true },
-      { name: 'encryptedPassword', label: 'Encrypted password', type: 'text', list: false },
+      { name: 'encryptedPassword', label: 'Password', type: 'text', list: false },
       { name: 'metadata', label: 'Metadata', type: 'json', list: false },
       { name: 'status', label: 'Status', type: 'enum', required: true, list: true, options: enumOptions(InventoryStatus) },
       { name: 'reservedBy', label: 'Reserved by', type: 'relation', list: false, relation: { entityKey: 'users', labelField: 'email' } },

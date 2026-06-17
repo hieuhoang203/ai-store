@@ -52,10 +52,22 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private registerCommands(bot: Telegraf) {
     bot.start(async (context) => {
       const miniAppUrl = this.configService.getOrThrow<string>('TELEGRAM_MINIAPP_URL');
+      const launchButtons = this.isHttpsUrl(miniAppUrl)
+        ? [[Markup.button.webApp('🛒 Mở cửa hàng', miniAppUrl)]]
+        : [];
+
+      if (!launchButtons.length) {
+        this.logger.warn(
+          `TELEGRAM_MINIAPP_URL must be an HTTPS URL to open as a Telegram Web App. Current value: ${miniAppUrl}`,
+        );
+      }
+
       await context.reply(
-        'Chào mừng bạn đến AI Store',
+        launchButtons.length
+          ? 'Chào mừng bạn đến AI Store'
+          : 'Chào mừng bạn đến AI Store. Mini App cần URL HTTPS để mở trong Telegram.',
         Markup.inlineKeyboard([
-          [Markup.button.webApp('🛒 Mở cửa hàng', miniAppUrl)],
+          ...launchButtons,
           [Markup.button.callback('📦 Đơn hàng của tôi', 'orders')],
           [Markup.button.callback('🎫 Hỗ trợ', 'support')],
         ]),
@@ -89,5 +101,13 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       const adminUrl = this.configService.getOrThrow<string>('ADMIN_APP_URL');
       await context.reply(`${adminUrl}/auth/login?token=${token}`);
     });
+  }
+
+  private isHttpsUrl(value: string) {
+    try {
+      return new URL(value).protocol === 'https:';
+    } catch {
+      return false;
+    }
   }
 }

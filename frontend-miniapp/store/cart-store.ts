@@ -5,6 +5,7 @@ export type CartItem = {
   name: string;
   price: string;
   quantity: number;
+  availableStock?: number;
 };
 
 type CartStore = {
@@ -19,12 +20,29 @@ export const useCartStore = create<CartStore>((set) => ({
   items: [],
   addItem: (item) =>
     set((state) => {
+      if (item.availableStock !== undefined && item.availableStock <= 0) return state;
       const existing = state.items.find((cartItem) => cartItem.variantId === item.variantId);
-      if (!existing) return { items: [...state.items, item] };
+      if (!existing) {
+        return {
+          items: [
+            ...state.items,
+            {
+              ...item,
+              quantity: item.availableStock ? Math.min(item.quantity, item.availableStock) : item.quantity,
+            },
+          ],
+        };
+      }
+      const availableStock = item.availableStock ?? existing.availableStock;
+      const nextQuantity = existing.quantity + item.quantity;
       return {
         items: state.items.map((cartItem) =>
           cartItem.variantId === item.variantId
-            ? { ...cartItem, quantity: cartItem.quantity + item.quantity }
+            ? {
+                ...cartItem,
+                availableStock,
+                quantity: availableStock ? Math.min(nextQuantity, availableStock) : nextQuantity,
+              }
             : cartItem,
         ),
       };
@@ -34,7 +52,12 @@ export const useCartStore = create<CartStore>((set) => ({
   updateQuantity: (variantId, quantity) =>
     set((state) => ({
       items: state.items.map((item) =>
-        item.variantId === variantId ? { ...item, quantity: Math.max(quantity, 1) } : item,
+        item.variantId === variantId
+          ? {
+              ...item,
+              quantity: Math.min(Math.max(quantity, 1), item.availableStock || Number.POSITIVE_INFINITY),
+            }
+          : item,
       ),
     })),
   clear: () => set({ items: [] }),

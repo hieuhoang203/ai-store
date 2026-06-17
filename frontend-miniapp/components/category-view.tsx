@@ -30,6 +30,8 @@ const text = {
   choosePackage: "Ch\u1ecdn g\u00f3i",
   noPackage: "Ch\u01b0a c\u00f3 g\u00f3i \u0111ang b\u00e1n",
   addPackage: "Th\u00eam g\u00f3i",
+  outOfStock: "H\u1ebft h\u00e0ng",
+  stock: "C\u00f2n",
   days: "ng\u00e0y",
   warranty: "B\u1ea3o h\u00e0nh",
 };
@@ -291,6 +293,9 @@ function VariantCard({
   index: number;
   onAdd: (item: CartItem) => void;
 }) {
+  const availableStock = variant.availableStock;
+  const outOfStock = availableStock !== undefined && availableStock <= 0;
+
   return (
     <article
       className="mini-rise rounded-xl border border-white/10 bg-white/[0.045] p-3 shadow-lg shadow-black/20"
@@ -306,17 +311,27 @@ function VariantCard({
             {variant.warrantyDays ? (
               <InfoPill icon={<ShieldCheck className="h-3 w-3" />} label={`${variant.warrantyDays} ${text.days} ${text.warranty.toLowerCase()}`} />
             ) : null}
-            <InfoPill icon={<PackageCheck className="h-3 w-3" />} label={text.addPackage} />
+            <InfoPill
+              icon={<PackageCheck className="h-3 w-3" />}
+              label={outOfStock ? text.outOfStock : availableStock !== undefined ? `${text.stock} ${availableStock}` : text.addPackage}
+            />
           </div>
         </div>
         <div className="shrink-0 text-right">
           <p className="text-lg font-black text-emerald-300">{formatMoney(variant.sellPrice)} đ</p>
           <button
-            onClick={() => onAdd({ variantId: variant.id, name: `${product.name} - ${variant.name}`, price: variant.sellPrice, quantity: 1 })}
-            className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-300 px-3 text-sm font-black text-black transition hover:bg-emerald-200"
+            disabled={outOfStock}
+            onClick={() => onAdd({
+              variantId: variant.id,
+              name: `${product.name} - ${variant.name}`,
+              price: variant.sellPrice,
+              quantity: 1,
+              availableStock,
+            })}
+            className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-300 px-3 text-sm font-black text-black transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
           >
             <Plus className="h-4 w-4" />
-            {text.addPackage}
+            {outOfStock ? text.outOfStock : text.addPackage}
           </button>
         </div>
       </div>

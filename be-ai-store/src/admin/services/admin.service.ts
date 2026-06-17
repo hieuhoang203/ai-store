@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '../../../generated/prisma/client.js';
 import { InventoryStatus, OrderStatus, PaymentStatus } from '../models/admin-enums.model';
 import { PrismaService } from '../../database/prisma.service';
+import { InventoryPasswordService } from '../../inventories/inventory-password.service';
 import { ADMIN_ENTITIES, ADMIN_ENTITY_MAP } from '../models/admin-entity.model';
 import {
   AdminEntityConfig,
@@ -16,6 +17,7 @@ export class AdminService {
   constructor(
     private readonly repository: AdminRepository,
     private readonly prisma: PrismaService,
+    private readonly inventoryPasswordService: InventoryPasswordService,
   ) {}
 
   async getEntities(): Promise<AdminEntitySummary[]> {
@@ -51,6 +53,7 @@ export class AdminService {
     if (entityKey === 'users') {
       record.roleId = await this.getUserRoleId(String(record.__recordId));
     }
+    this.decryptInventoryPassword(entityKey, record);
 
     return record;
   }
@@ -59,6 +62,7 @@ export class AdminService {
     const config = this.getConfig(entityKey);
     const roleId = entityKey === 'users' ? payload.roleId : undefined;
     const data = this.sanitizePayload(config, payload, 'create');
+    this.encryptInventoryPassword(entityKey, data);
     const record = await this.repository.create(config, data);
 
     if (entityKey === 'users' && roleId) {
@@ -72,6 +76,7 @@ export class AdminService {
     const config = this.getConfig(entityKey);
     const roleId = entityKey === 'users' ? payload.roleId : undefined;
     const data = this.sanitizePayload(config, payload, 'update');
+    this.encryptInventoryPassword(entityKey, data);
     const record = await this.repository.update(config, recordId, data);
 
     if (entityKey === 'users' && roleId !== undefined) {
@@ -336,5 +341,15 @@ export class AdminService {
     await this.prisma.userRole.create({
       data: { userId, roleId },
     });
+  }
+
+  private encryptInventoryPassword(entityKey: string, data: Record<string, unknown>) {
+    if (entityKey !== 'inventories' || typeof data.encryptedPassword !== 'string') return;
+    data.encryptedPassword = this.inventoryPasswordService.encrypt(data.encryptedPassword);
+  }
+
+  private decryptInventoryPassword(entityKey: string, record: Record<string, unknown>) {
+    if (entityKey !== 'inventories' || typeof record.encryptedPassword !== 'string') return;
+    record.encryptedPassword = this.inventoryPasswordService.decrypt(record.encryptedPassword);
   }
 }

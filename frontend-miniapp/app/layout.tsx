@@ -10,11 +10,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="vi" className="h-full antialiased">
+    <html lang="vi" className="h-full antialiased" suppressHydrationWarning>
       <head>
         <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
       </head>
-      <body className="min-h-full bg-[#050805] text-zinc-100">
+      <body className="min-h-full bg-[#050805] text-zinc-100" suppressHydrationWarning>
         <AppProviders>{children}</AppProviders>
       </body>
     </html>

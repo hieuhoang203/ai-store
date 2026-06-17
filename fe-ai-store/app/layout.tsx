@@ -19,8 +19,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="vi" className={`${roboto.variable} h-full antialiased`}>
-      <body className="min-h-full bg-[#050805] text-zinc-100">{children}</body>
+    <html lang="vi" className={`${roboto.variable} h-full antialiased`} suppressHydrationWarning>
+      <body className="min-h-full bg-[#050805] text-zinc-100" suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   );
 }

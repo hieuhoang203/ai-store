@@ -36,6 +36,10 @@ export class ProductsService {
 
     return {
       ...rest,
+      variants: product.variants.map(({ _count, ...variant }) => ({
+        ...variant,
+        availableStock: _count.inventories,
+      })),
       category: categoryRef?.name || null,
       categoryIcon: categoryRef?.icon || null,
     };

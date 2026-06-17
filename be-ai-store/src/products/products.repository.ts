@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { InventoryStatus } from '../../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service';
 
 @Injectable()
@@ -10,7 +11,18 @@ export class ProductsRepository {
       where: { isDeleted: false, isActive: true },
       include: {
         categoryRef: true,
-        variants: { where: { isDeleted: false, active: true } },
+        variants: {
+          where: { isDeleted: false, active: true },
+          include: {
+            _count: {
+              select: {
+                inventories: {
+                  where: { status: InventoryStatus.AVAILABLE, isDeleted: false },
+                },
+              },
+            },
+          },
+        },
       },
       orderBy: { updatedAt: 'desc' },
     });
@@ -40,7 +52,18 @@ export class ProductsRepository {
       where: { categoryId, isDeleted: false, isActive: true },
       include: {
         categoryRef: true,
-        variants: { where: { isDeleted: false, active: true } },
+        variants: {
+          where: { isDeleted: false, active: true },
+          include: {
+            _count: {
+              select: {
+                inventories: {
+                  where: { status: InventoryStatus.AVAILABLE, isDeleted: false },
+                },
+              },
+            },
+          },
+        },
       },
       orderBy: { updatedAt: 'desc' },
     });
@@ -51,7 +74,18 @@ export class ProductsRepository {
       where: { id, isDeleted: false, isActive: true },
       include: {
         categoryRef: true,
-        variants: { where: { isDeleted: false, active: true } },
+        variants: {
+          where: { isDeleted: false, active: true },
+          include: {
+            _count: {
+              select: {
+                inventories: {
+                  where: { status: InventoryStatus.AVAILABLE, isDeleted: false },
+                },
+              },
+            },
+          },
+        },
       },
     });
   }

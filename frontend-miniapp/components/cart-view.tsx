@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
-import { ExternalLink, Minus, Plus, Trash2 } from "lucide-react";
-import type { CheckoutResult } from "@/features/orders/order-service";
+import { CheckCircle2, ExternalLink, Minus, Plus, Trash2 } from "lucide-react";
+import type { CheckoutResult, PaymentStatusResult } from "@/features/orders/order-service";
 import type { CartItem } from "@/store/cart-store";
 import { EmptyState } from "./empty-state";
 import { SectionTitle } from "./section-title";
@@ -13,6 +13,7 @@ export function CartView({
   total,
   processing,
   paymentResult,
+  paymentStatus,
   onRemove,
   onQuantityChange,
   onCheckout,
@@ -21,6 +22,7 @@ export function CartView({
   total: number;
   processing: boolean;
   paymentResult: CheckoutResult | null;
+  paymentStatus: PaymentStatusResult | null;
   onRemove: (variantId: string) => void;
   onQuantityChange: (variantId: string, quantity: number) => void;
   onCheckout: () => void;
@@ -35,7 +37,11 @@ export function CartView({
     <section className="mini-fade space-y-3">
       <SectionTitle title="Giỏ hàng" />
 
-      {paymentResult ? <PaymentPanel result={paymentResult} /> : null}
+      {paymentStatus?.payment.status === "PAID" ? (
+        <PaymentSuccessPanel status={paymentStatus} />
+      ) : paymentResult ? (
+        <PaymentPanel result={paymentResult} />
+      ) : null}
 
       {items.map((item, index) => (
         <article
@@ -47,6 +53,9 @@ export function CartView({
             <div className="min-w-0">
               <h3 className="line-clamp-2 text-sm font-black text-white">{item.name}</h3>
               <p className="mt-1 text-sm font-bold text-emerald-300">{Number(item.price).toLocaleString("vi-VN")} đ</p>
+              {item.availableStock !== undefined ? (
+                <p className="mt-1 text-xs font-semibold text-zinc-500">Còn {item.availableStock} trong kho</p>
+              ) : null}
             </div>
             <button
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-400/20 bg-red-400/10 text-red-300"
@@ -71,9 +80,9 @@ export function CartView({
               <span className="w-9 text-center text-sm font-black text-white">{item.quantity}</span>
               <button
                 onClick={() => onQuantityChange(item.variantId, item.quantity + 1)}
-                className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-300 hover:bg-white/10"
+                className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-300 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Tăng số lượng"
-                disabled={locked}
+                disabled={locked || (item.availableStock !== undefined && item.quantity >= item.availableStock)}
               >
                 <Plus className="h-4 w-4" />
               </button>
@@ -164,6 +173,44 @@ function PaymentPanel({ result }: { result: CheckoutResult }) {
       <p className="mt-3 text-xs leading-5 text-zinc-400">
         Hệ thống chỉ xác nhận đơn sau khi nhận webhook hợp lệ từ payOS. Vui lòng không tự sửa số tiền hoặc nội dung chuyển khoản.
       </p>
+    </section>
+  );
+}
+
+function PaymentSuccessPanel({ status }: { status: PaymentStatusResult }) {
+  return (
+    <section className="rounded-2xl border border-emerald-300/30 bg-emerald-300/12 p-4 shadow-xl shadow-black/20">
+      <div className="flex items-start gap-3">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-300 text-black">
+          <CheckCircle2 className="h-6 w-6" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">Thanh toán thành công</p>
+          <h2 className="mt-1 text-xl font-black text-white">{status.order.orderNo}</h2>
+          <p className="mt-1 text-sm leading-5 text-zinc-400">
+            Tài khoản đã được gửi qua Telegram. Bạn cũng có thể xem lại thông tin giao hàng bên dưới.
+          </p>
+        </div>
+      </div>
+
+      {status.deliveries.length ? (
+        <div className="mt-4 space-y-3">
+          {status.deliveries.map((delivery) => (
+            <article key={delivery.id} className="rounded-xl border border-white/10 bg-black/28 p-3">
+              <p className="text-sm font-black text-white">
+                {delivery.productName} - {delivery.variantName}
+              </p>
+              <pre className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-black/35 p-3 text-sm leading-6 text-emerald-100">
+                {delivery.content || "Đang chuẩn bị thông tin giao hàng..."}
+              </pre>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-4 rounded-xl border border-white/10 bg-black/28 p-3 text-sm font-semibold text-zinc-300">
+          Thanh toán đã được ghi nhận. Hệ thống đang chuẩn bị tài khoản và mật khẩu.
+        </div>
+      )}
     </section>
   );
 }

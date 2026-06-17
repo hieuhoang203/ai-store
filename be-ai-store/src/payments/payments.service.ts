@@ -57,7 +57,7 @@ export class PaymentsService {
         status: PaymentStatus.PENDING,
       },
     });
-    const paymentContent = this.createPaymentContent(payment.id);
+    const paymentContent = this.createPaymentContent(order.orderNo);
 
     await this.prisma.payment.update({
       where: { id: payment.id },
@@ -118,10 +118,15 @@ export class PaymentsService {
       throw new BadRequestException('Invalid payOS webhook data');
     }
 
-    const order = await this.prisma.order.findUniqueOrThrow({
+    const order = await this.prisma.order.findUnique({
       where: { orderNo: `AI${orderCode}` },
       include: { payments: true },
     });
+
+    if (!order) {
+      return { ok: true, ignored: 'ORDER_NOT_FOUND' };
+    }
+
     const payment = order.payments.find((record) => record.transactionNo === paymentLinkId);
 
     if (!payment) {
@@ -172,25 +177,85 @@ export class PaymentsService {
     });
 
     for (const item of payment.order.items) {
-      const inventory = await this.inventoriesService.sellFirstAvailableInventory(
-        item.variantId,
-        payment.order.userId,
-      );
+      for (let index = 0; index < item.quantity; index += 1) {
+        const inventory = await this.inventoriesService.sellFirstAvailableInventory(
+          item.variantId,
+          payment.order.userId,
+        );
 
-      await this.prisma.orderItem.update({
-        where: { id: item.id },
-        data: { inventoryId: inventory.id },
-      });
+        if (index === 0) {
+          await this.prisma.orderItem.update({
+            where: { id: item.id },
+            data: { inventoryId: inventory.id },
+          });
+        }
 
-      await this.deliveriesService.createDelivery(item.id, inventory.id);
+        await this.deliveriesService.createDelivery(item.id, inventory.id);
+      }
     }
+
+    await this.prisma.order.update({
+      where: { id: payment.orderId },
+      data: { status: OrderStatus.DELIVERED },
+    });
 
     return payment;
   }
 
-  private createPaymentContent(paymentId: string) {
-    const serviceName = this.configService.get<string>('PAYOS_PAYMENT_DESCRIPTION_PREFIX') || 'AI Store';
-    return `${serviceName} ${paymentId}`;
+  async getPaymentStatus(paymentId: string) {
+    const payment = await this.prisma.payment.findUniqueOrThrow({
+      where: { id: paymentId },
+      include: {
+        order: {
+          include: {
+            items: {
+              include: {
+                variant: { include: { product: true } },
+                deliveries: {
+                  where: { isDeleted: false },
+                  orderBy: { createdAt: 'asc' },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return {
+      payment: {
+        id: payment.id,
+        status: payment.status,
+        paidAt: payment.paidAt,
+      },
+      order: {
+        id: payment.order.id,
+        orderNo: payment.order.orderNo,
+        status: payment.order.status,
+        paymentStatus: payment.order.paymentStatus,
+      },
+      deliveries: payment.order.items.flatMap((item) =>
+        item.deliveries.map((delivery) => ({
+          id: delivery.id,
+          status: delivery.status,
+          deliveredAt: delivery.deliveredAt,
+          content: delivery.deliveryContent,
+          productName: item.variant.product.name,
+          variantName: item.variant.name,
+        })),
+      ),
+    };
+  }
+
+  private createPaymentContent(orderNo: string) {
+    const maxDescriptionLength = 25;
+    const orderCode = orderNo.replace(/^AI/, '');
+    const configuredPrefix = this.configService.get<string>('PAYOS_PAYMENT_DESCRIPTION_PREFIX') || 'AI Store';
+    const prefix = configuredPrefix.trim() || 'AI Store';
+    const suffix = orderCode.slice(-15);
+    const maxPrefixLength = Math.max(maxDescriptionLength - suffix.length - 1, 1);
+
+    return `${prefix.slice(0, maxPrefixLength)} ${suffix}`.slice(0, maxDescriptionLength);
   }
 
   private getPayosOrderCode(orderNo: string) {

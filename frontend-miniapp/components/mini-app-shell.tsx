@@ -3,10 +3,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { useMemo, useState } from "react";
-import { checkout, type CheckoutResult } from "@/features/orders/order-service";
+import {
+  checkout,
+  getPaymentStatus,
+  type CheckoutResult,
+} from "@/features/orders/order-service";
 import { getProducts } from "@/features/products/product-service";
 import { useTelegramUser, useTelegramViewport } from "@/hooks/use-telegram";
-import { useCartStore } from "@/store/cart-store";
+import { useCartStore, type CartItem } from "@/store/cart-store";
 import { BottomNav } from "./bottom-nav";
 import { CartView } from "./cart-view";
 import { CategoryView } from "./category-view";
@@ -21,6 +25,8 @@ const text = {
   qrCreated: "\u0110\u00e3 t\u1ea1o m\u00e3 QR thanh to\u00e1n",
   checkoutFailed: "Thanh to\u00e1n th\u1ea5t b\u1ea1i",
   addedToCart: "\u0110\u00e3 th\u00eam v\u00e0o gi\u1ecf h\u00e0ng",
+  outOfStock: "S\u1ea3n ph\u1ea9m n\u00e0y \u0111\u00e3 h\u1ebft h\u00e0ng",
+  stockLimitReached: "\u0110\u00e3 \u0111\u1ea1t s\u1ed1 l\u01b0\u1ee3ng t\u1ed1i \u0111a trong kho",
   ordersTitle: "\u0110\u01a1n h\u00e0ng",
   ordersText: "C\u00e1c \u0111\u01a1n \u0111\u00e3 thanh to\u00e1n v\u00e0 tr\u1ea1ng th\u00e1i giao h\u00e0ng s\u1ebd \u0111\u01b0\u1ee3c \u0111\u1ed3ng b\u1ed9 t\u1ea1i \u0111\u00e2y.",
   profileTitle: "T\u00e0i kho\u1ea3n",
@@ -36,6 +42,15 @@ export function MiniAppShell() {
   const { items, addItem, removeItem, updateQuantity } = useCartStore();
   const { initData } = useTelegramUser();
   useTelegramViewport();
+  const { data: paymentStatus } = useQuery({
+    queryKey: ["payment-status", paymentResult?.payment.id],
+    queryFn: () => getPaymentStatus(paymentResult!.payment.id),
+    enabled: Boolean(paymentResult?.payment.id),
+    refetchInterval: (query) => {
+      const orderStatus = query.state.data?.order.status;
+      return orderStatus === "DELIVERED" ? false : 3000;
+    },
+  });
 
   const cartCount = useMemo(() => items.reduce((sum, item) => sum + item.quantity, 0), [items]);
   const total = useMemo(
@@ -52,6 +67,23 @@ export function MiniAppShell() {
     flushSync(() => {
       setActiveTab(tab);
     });
+  }
+
+  function handleAddToCart(item: CartItem) {
+    const currentQuantity = items.find((cartItem) => cartItem.variantId === item.variantId)?.quantity || 0;
+
+    if (item.availableStock !== undefined && item.availableStock <= 0) {
+      showToast({ type: "error", message: text.outOfStock });
+      return;
+    }
+
+    if (item.availableStock !== undefined && currentQuantity + item.quantity > item.availableStock) {
+      showToast({ type: "error", message: text.stockLimitReached });
+      return;
+    }
+
+    addItem(item);
+    showToast({ type: "success", message: text.addedToCart });
   }
 
   async function submitCheckout() {
@@ -86,20 +118,14 @@ export function MiniAppShell() {
             <ProductGrid
               products={products}
               loading={isLoading}
-              onAdd={(item) => {
-                addItem(item);
-                showToast({ type: "success", message: text.addedToCart });
-              }}
+              onAdd={handleAddToCart}
             />
           </>
         ) : null}
 
         {activeTab === "categories" ? (
           <CategoryView
-            onAdd={(item) => {
-              addItem(item);
-              showToast({ type: "success", message: text.addedToCart });
-            }}
+            onAdd={handleAddToCart}
           />
         ) : null}
 
@@ -109,6 +135,7 @@ export function MiniAppShell() {
             total={total}
             processing={processing}
             paymentResult={paymentResult}
+            paymentStatus={paymentStatus || null}
             onRemove={removeItem}
             onQuantityChange={updateQuantity}
             onCheckout={submitCheckout}

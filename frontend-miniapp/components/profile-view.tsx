@@ -17,7 +17,7 @@ import { getMyTickets, getProfileSummary, type MyTicket, type ProfileSummary } f
 import { EmptyState } from "./empty-state";
 
 type ProfileTab = "services" | "tickets";
-type TicketFilter = "ALL" | "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED";
+type TicketFilter = "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED";
 
 const text = {
   title: "Tài khoản",
@@ -39,11 +39,11 @@ const text = {
   searchTicket: "Tìm ticket",
 };
 
-const ticketFilters: TicketFilter[] = ["ALL", "OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"];
+const ticketFilters: TicketFilter[] = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"];
 
 export function ProfileView({ initData }: { initData?: string }) {
   const [activeTab, setActiveTab] = useState<ProfileTab>("services");
-  const [ticketFilter, setTicketFilter] = useState<TicketFilter>("ALL");
+  const [ticketFilter, setTicketFilter] = useState<TicketFilter>("OPEN");
   const [ticketSearch, setTicketSearch] = useState("");
   const [selectedTicket, setSelectedTicket] = useState<MyTicket | null>(null);
   const profileQuery = useQuery({
@@ -290,13 +290,13 @@ function TicketsPanel({
         />
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="grid grid-cols-2 gap-2">
         {ticketFilters.map((item) => (
           <button
             key={item}
             type="button"
             onClick={() => onFilterChange(item)}
-            className={`h-8 shrink-0 rounded-full px-3 text-xs font-bold transition ${
+            className={`h-9 rounded-lg px-2 text-xs font-bold transition ${
               filter === item ? "bg-emerald-300 text-black" : "bg-black/35 text-zinc-300"
             }`}
           >
@@ -459,7 +459,7 @@ function filterTickets(tickets: MyTicket[], filter: TicketFilter, search: string
   const normalizedSearch = search.trim().toLowerCase();
 
   return tickets.filter((ticket) => {
-    const statusMatched = filter === "ALL" || ticket.status === filter;
+    const statusMatched = ticket.status === filter;
     if (!statusMatched) return false;
     if (!normalizedSearch) return true;
 
@@ -473,14 +473,13 @@ function countTicketsByStatus(tickets: MyTicket[]) {
   return ticketFilters.reduce(
     (result, filter) => ({
       ...result,
-      [filter]: filter === "ALL" ? tickets.length : tickets.filter((ticket) => ticket.status === filter).length,
+      [filter]: tickets.filter((ticket) => ticket.status === filter).length,
     }),
     {} as Record<TicketFilter, number>,
   );
 }
 
 function formatTicketFilter(filter: TicketFilter) {
-  if (filter === "ALL") return "Tất cả";
   if (filter === "IN_PROGRESS") return "Đang xử lý";
   if (filter === "RESOLVED") return "Đã xử lý";
   if (filter === "CLOSED") return "Đã đóng";

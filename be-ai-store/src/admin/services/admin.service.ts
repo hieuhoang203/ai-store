@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { Prisma } from '../../../generated/prisma/client.js';
+import { Prisma, TicketStatus } from '../../../generated/prisma/client.js';
 import { InventoryStatus, OrderStatus, PaymentStatus } from '../models/admin-enums.model';
 import { PrismaService } from '../../database/prisma.service';
 import { InventoryPasswordService } from '../../inventories/inventory-password.service';
@@ -80,6 +80,8 @@ export class AdminService {
   async update(entityKey: string, recordId: string, payload: Record<string, unknown>) {
     const config = this.getConfig(entityKey);
     const roleId = entityKey === 'users' ? payload.roleId : undefined;
+    const previousRecord = entityKey === 'tickets' ? await this.repository.detail(config, recordId) : null;
+    const closeReason = typeof payload.closeReason === 'string' ? payload.closeReason : undefined;
     const data = this.sanitizePayload(config, payload, 'update');
     this.encryptInventoryPassword(entityKey, data);
     const record = await this.repository.update(config, recordId, data);
@@ -87,6 +89,7 @@ export class AdminService {
     if (entityKey === 'users' && roleId !== undefined) {
       await this.assignUserRole(recordId, roleId ? String(roleId) : null);
     }
+    await this.announceTicketStatusChanged(entityKey, previousRecord, record, closeReason);
 
     const serialized = this.serializeRecord(config, record);
     this.decryptInventoryPassword(entityKey, serialized);
@@ -377,5 +380,27 @@ export class AdminService {
     if (entityKey === 'inventories') {
       await this.notificationsService.announceInventoryRestocked(id, 1);
     }
+  }
+
+  private async announceTicketStatusChanged(
+    entityKey: string,
+    previousRecord: unknown,
+    record: unknown,
+    closeReason?: string,
+  ) {
+    if (entityKey !== 'tickets' || !previousRecord || !record) return;
+
+    const previousStatus = String((previousRecord as Record<string, unknown>).status || '');
+    const nextStatus = String((record as Record<string, unknown>).status || '');
+    const id = String((record as Record<string, unknown>).id || '');
+    const notifyStatuses = ['IN_PROGRESS', 'RESOLVED', 'CLOSED'];
+
+    if (!id || previousStatus === nextStatus || !notifyStatuses.includes(nextStatus)) return;
+
+    await this.notificationsService.notifyTicketStatusChanged(
+      id,
+      nextStatus as TicketStatus,
+      closeReason,
+    );
   }
 }

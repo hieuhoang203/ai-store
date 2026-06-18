@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, RefreshCw } from "lucide-react";
+import { Plus, RefreshCw, X } from "lucide-react";
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -40,6 +40,8 @@ export function AdminConsole() {
   const [tableLoading, setTableLoading] = useState(false);
   const [modal, setModal] = useState<ModalState>(null);
   const [form, setForm] = useState<FormValues>({});
+  const [closeReasonModalOpen, setCloseReasonModalOpen] = useState(false);
+  const [closeReason, setCloseReason] = useState("");
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const activeEntity = useMemo(
@@ -133,6 +135,8 @@ export function AdminConsole() {
   const openCreate = () => {
     if (!activeEntity) return;
     setForm({});
+    setCloseReasonModalOpen(false);
+    setCloseReason("");
     setModal({ type: "create" });
   };
 
@@ -141,6 +145,8 @@ export function AdminConsole() {
       if (!activeEntity) return;
       const fullRecord = await getEntityDetail(activeEntity.key, record.__recordId);
       setForm(toFormValues(fullRecord));
+      setCloseReasonModalOpen(false);
+      setCloseReason("");
       setModal({ type: "edit", record: fullRecord });
     } catch (error) {
       showToast("error", error instanceof Error ? error.message : "KhÃ´ng táº£i Ä‘Æ°á»£c chi tiáº¿t");
@@ -161,8 +167,22 @@ export function AdminConsole() {
     event.preventDefault();
     if (!activeEntity || !modal || modal.type === "detail") return;
 
+    if (shouldRequireCloseReason()) {
+      setCloseReasonModalOpen(true);
+      return;
+    }
+
+    await submitEntityForm();
+  };
+
+  const submitEntityForm = async (extraPayload: Record<string, unknown> = {}) => {
+    if (!activeEntity || !modal || modal.type === "detail") return;
+
     try {
-      const payload = buildPayload(editableFields, form);
+      const payload = {
+        ...buildPayload(editableFields, form),
+        ...extraPayload,
+      };
 
       if (modal.type === "create") {
         await createEntity(activeEntity.key, payload);
@@ -173,10 +193,31 @@ export function AdminConsole() {
       }
 
       setModal(null);
+      setCloseReasonModalOpen(false);
+      setCloseReason("");
       await refreshAll();
     } catch (error) {
       showToast("error", error instanceof Error ? error.message : "Thao tác thất bại");
     }
+  };
+
+  const shouldRequireCloseReason = () => {
+    if (!activeEntity || !modal || modal.type !== "edit") return false;
+    if (activeEntity.key !== "tickets") return false;
+
+    const previousStatus = String(modal.record.status || "");
+    const nextStatus = String(form.status || "");
+    return previousStatus !== "CLOSED" && nextStatus === "CLOSED";
+  };
+
+  const submitCloseReason = async () => {
+    const normalizedReason = closeReason.trim();
+    if (!normalizedReason) {
+      showToast("error", "Vui lòng nhập lý do đóng ticket");
+      return;
+    }
+
+    await submitEntityForm({ closeReason: normalizedReason });
   };
 
   const removeRecord = async (record: Record<string, unknown>) => {
@@ -246,8 +287,83 @@ export function AdminConsole() {
         />
       ) : null}
 
+      {closeReasonModalOpen ? (
+        <CloseReasonModal
+          value={closeReason}
+          onChange={setCloseReason}
+          onClose={() => setCloseReasonModalOpen(false)}
+          onSubmit={submitCloseReason}
+        />
+      ) : null}
+
       <ToastStack toasts={toasts} />
     </main>
+  );
+}
+
+function CloseReasonModal({
+  value,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/78 p-4 backdrop-blur-sm">
+      <section className="smooth-panel w-full max-w-lg overflow-hidden rounded-lg border border-white/10 bg-[#0b120d] shadow-2xl shadow-black/50">
+        <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+          <div>
+            <h3 className="text-lg font-black text-white">Lý do đóng ticket</h3>
+            <p className="mt-1 text-sm text-zinc-400">
+              Lý do này sẽ được gửi trực tiếp tới khách hàng qua Telegram.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-white/8 hover:text-white"
+            title="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="p-5">
+          <label className="block text-sm font-bold text-zinc-200" htmlFor="close-ticket-reason">
+            Lý do
+          </label>
+          <textarea
+            id="close-ticket-reason"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            rows={5}
+            className="mt-2 w-full resize-y rounded-lg border border-white/10 bg-black/35 px-3 py-2 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-600 focus:border-emerald-300"
+            placeholder="Ví dụ: Ticket đã được xử lý và khách hàng đã xác nhận dịch vụ hoạt động bình thường."
+          />
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-white/10 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-10 rounded-lg border border-white/10 px-4 text-sm font-bold text-zinc-200 transition hover:bg-white/8"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onSubmit}
+            className="h-10 rounded-lg bg-emerald-400 px-4 text-sm font-black text-black transition hover:bg-emerald-300"
+          >
+            Close ticket
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 

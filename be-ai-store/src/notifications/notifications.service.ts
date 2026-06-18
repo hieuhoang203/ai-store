@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   InventoryStatus,
   NotificationType,
+  TicketStatus,
   UserStatus,
 } from '../../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service';
@@ -31,6 +32,43 @@ export class NotificationsService {
       where: { userId, isDeleted: false },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async notifyTicketStatusChanged(
+    ticketId: string,
+    status: TicketStatus,
+    closeReason?: string,
+  ) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: { user: true },
+    });
+
+    if (!ticket || ticket.isDeleted) return;
+
+    const content = this.renderTicketStatusMessage(ticket.id, status, closeReason);
+    if (!content) return;
+
+    await this.prisma.notification.create({
+      data: {
+        userId: ticket.userId,
+        type: NotificationType.SUPPORT,
+        title: `Ticket ${this.formatTicketCode(ticket.id)}`,
+        content,
+      },
+    });
+
+    if (ticket.user.telegramId) {
+      try {
+        await this.telegramService.sendMessage(ticket.user.telegramId, content);
+      } catch (error) {
+        this.logger.warn(
+          `Cannot send ticket notification to ${ticket.user.telegramId}: ${
+            error instanceof Error ? error.message : 'Unknown error'
+          }`,
+        );
+      }
+    }
   }
 
   async announceInventoryRestocked(inventoryId: string, quantity = 1) {
@@ -185,5 +223,56 @@ export class NotificationsService {
       categoryName: variant.product.categoryRef?.name,
       variantName: variant.name,
     };
+  }
+
+  private renderTicketStatusMessage(
+    ticketId: string,
+    status: TicketStatus,
+    closeReason?: string,
+  ) {
+    const ticketCode = this.formatTicketCode(ticketId);
+
+    if (status === TicketStatus.IN_PROGRESS) {
+      return [
+        `⚠️ Ticket: ${ticketCode}`,
+        '',
+        'Chúng tôi thành thật xin lỗi về sự cố bạn gặp phải.',
+        '',
+        'Đội ngũ kỹ thuật đang kiểm tra nguyên nhân và khắc phục trong thời gian sớm nhất.',
+        '',
+        '🙏 Mong bạn thông cảm và chờ thêm ít phút.',
+      ].join('\n');
+    }
+
+    if (status === TicketStatus.RESOLVED) {
+      return [
+        `✅ Ticket: ${ticketCode}`,
+        '',
+        'Sự cố đã được xử lý thành công.',
+        '',
+        'Vui lòng kiểm tra lại dịch vụ. Nếu vẫn gặp vấn đề, hãy phản hồi ticket này để được hỗ trợ nhanh nhất.',
+        '',
+        '🙏 Cảm ơn bạn đã chờ đợi.',
+      ].join('\n');
+    }
+
+    if (status === TicketStatus.CLOSED) {
+      return [
+        `🔒 Ticket: ${ticketCode} đã được đóng.`,
+        '',
+        '📝 Lý do:',
+        closeReason?.trim() || 'Ticket đã được đóng bởi đội hỗ trợ.',
+        '',
+        'Nếu cần hỗ trợ thêm, vui lòng tạo ticket mới.',
+        '',
+        '❤️ AI Store',
+      ].join('\n');
+    }
+
+    return null;
+  }
+
+  private formatTicketCode(ticketId: string) {
+    return `#${ticketId.slice(0, 8).toUpperCase()}`;
   }
 }

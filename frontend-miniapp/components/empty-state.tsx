@@ -6,7 +6,7 @@ export function EmptyState({ title, text }: { title: string; text: string }) {
       <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-300/10 text-emerald-300">
         <PackageOpen className="h-6 w-6" />
       </div>
-      <h2 className="mt-4 text-xl font-black text-white">{title}</h2>
+      <h2 className="mt-4 text-xl font-bold text-white">{title}</h2>
       <p className="mt-2 text-sm leading-6 text-zinc-500">{text}</p>
     </section>
   );

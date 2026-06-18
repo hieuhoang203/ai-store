@@ -11,6 +11,7 @@ export type CreatePayosPaymentLinkInput = {
   items: PayosPaymentItem[];
   returnUrl: string;
   cancelUrl: string;
+  expiredAt?: number;
 };
 
 export type PayosPaymentLinkData = {
@@ -25,6 +26,16 @@ export type PayosPaymentLinkData = {
   status: string;
   checkoutUrl: string;
   qrCode: string;
+};
+
+export type PayosPaymentLinkStatusData = {
+  id?: string;
+  orderCode: number;
+  amount: number;
+  amountPaid?: number;
+  amountRemaining?: number;
+  status: string;
+  transactions?: Array<Record<string, unknown>>;
 };
 
 export type PayosWebhookBody = {

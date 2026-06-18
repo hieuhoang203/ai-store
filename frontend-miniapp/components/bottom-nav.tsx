@@ -78,7 +78,7 @@ export function BottomNav({
             <Icon className="h-5 w-5" />
             <span>{tab.label}</span>
             {tab.key === "cart" && cartCount > 0 ? (
-              <span className="absolute right-2 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1 text-[10px] font-black text-black">
+              <span className="absolute right-2 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1 text-[10px] font-bold text-black">
                 {cartCount}
               </span>
             ) : null}

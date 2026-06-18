@@ -202,6 +202,8 @@ model Inventory {
   status            InventoryStatus @default(AVAILABLE)
   reservedBy        String?         @map("reserved_by") @db.Uuid
   reservedAt        DateTime?       @map("reserved_at") @db.Timestamptz(6)
+  reservedUntil     DateTime?       @map("reserved_until") @db.Timestamptz(6)
+  reservedOrderId   String?         @map("reserved_order_id") @db.Uuid
   deliveredAt       DateTime?       @map("delivered_at") @db.Timestamptz(6)
   createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -214,6 +216,8 @@ model Inventory {
   @@index([variantId], map: "idx_inventory_variant")
   @@index([status], map: "idx_inventory_status")
   @@index([reservedBy], map: "idx_inventory_reserved_by")
+  @@index([reservedOrderId], map: "idx_inventory_reserved_order")
+  @@index([status, reservedUntil], map: "idx_inventory_status_reserved_until")
   @@map("inventories")
 }
 

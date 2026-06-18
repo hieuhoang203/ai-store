@@ -6,7 +6,7 @@ export function TopSummary({ cartCount }: { cartCount: number }) {
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-300">AI Store</p>
-          <h1 className="mt-1 text-2xl font-black text-white">Mua tài khoản số</h1>
+          <h1 className="mt-1 text-2xl font-bold text-white">Mua tài khoản số</h1>
         </div>
         <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-emerald-300/30 bg-emerald-300/10 text-emerald-200 shadow-[0_0_24px_rgba(30,215,96,0.18)]">
           <Bot className="h-5 w-5" />
@@ -20,13 +20,13 @@ export function TopSummary({ cartCount }: { cartCount: number }) {
               <Sparkles className="h-3.5 w-3.5" />
               Telegram auto delivery
             </p>
-            <h2 className="mt-3 text-2xl font-black leading-tight text-white">Thanh toán nhanh, nhận hàng tức thì</h2>
+            <h2 className="mt-3 text-2xl font-bold leading-tight text-white">Thanh toán nhanh, nhận hàng tức thì</h2>
             <p className="mt-2 text-sm leading-6 text-zinc-400">
               Chọn sản phẩm, xác nhận giỏ hàng và hệ thống sẽ tự động tạo đơn trong AI Store.
             </p>
           </div>
           <div className="shrink-0 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-center">
-            <p className="text-2xl font-black text-emerald-300">{cartCount}</p>
+            <p className="text-2xl font-bold text-emerald-300">{cartCount}</p>
             <p className="text-[11px] font-semibold text-zinc-500">trong giỏ</p>
           </div>
         </div>
@@ -46,7 +46,7 @@ function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; 
         {icon}
         <span className="text-xs font-semibold text-zinc-500">{label}</span>
       </div>
-      <p className="mt-1 text-sm font-black text-white">{value}</p>
+      <p className="mt-1 text-sm font-bold text-white">{value}</p>
     </div>
   );
 }

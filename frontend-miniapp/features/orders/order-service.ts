@@ -13,6 +13,7 @@ export type CheckoutPaymentQr = {
   accountNumber: string;
   accountName: string;
   bin: string;
+  expiresAt: string;
 };
 
 export type CheckoutResult = {
@@ -35,6 +36,7 @@ export type PaymentStatusResult = {
     id: string;
     status: string;
     paidAt?: string | null;
+    expiresAt?: string | null;
   };
   order: {
     id: string;
@@ -50,6 +52,7 @@ export type PaymentStatusResult = {
     productName: string;
     variantName: string;
   }>;
+  deliveryMessage?: string | null;
 };
 
 export async function checkout(initData: string, items: CartItem[]) {

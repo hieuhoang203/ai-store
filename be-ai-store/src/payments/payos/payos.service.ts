@@ -4,6 +4,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import {
   CreatePayosPaymentLinkInput,
   PayosPaymentLinkData,
+  PayosPaymentLinkStatusData,
   PayosWebhookBody,
 } from './payos.types';
 
@@ -44,6 +45,27 @@ export class PayosService {
 
     if (!response.ok || !payload || payload.code !== '00' || !payload.data) {
       throw new BadGatewayException(payload?.desc || 'Cannot create payOS payment link');
+    }
+
+    return payload.data;
+  }
+
+  async getPaymentLink(orderCode: number): Promise<PayosPaymentLinkStatusData> {
+    const clientId = this.getRequiredConfig('PAYOS_CLIENT_ID');
+    const apiKey = this.getRequiredConfig('PAYOS_API_KEY');
+    const response = await fetch(`${this.apiBaseUrl}/v2/payment-requests/${orderCode}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-id': clientId,
+        'x-api-key': apiKey,
+      },
+    });
+
+    const payload = (await response.json().catch(() => null)) as PayosApiResponse<PayosPaymentLinkStatusData> | null;
+
+    if (!response.ok || !payload || payload.code !== '00' || !payload.data) {
+      throw new BadGatewayException(payload?.desc || 'Cannot get payOS payment link');
     }
 
     return payload.data;

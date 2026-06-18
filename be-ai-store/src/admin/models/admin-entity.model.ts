@@ -151,6 +151,8 @@ export const ADMIN_ENTITIES: AdminEntityConfig[] = [
       { name: 'status', label: 'Status', type: 'enum', required: true, list: true, options: enumOptions(InventoryStatus) },
       { name: 'reservedBy', label: 'Reserved by', type: 'relation', list: false, relation: { entityKey: 'users', labelField: 'email' } },
       { name: 'reservedAt', label: 'Reserved at', type: 'date', list: false },
+      { name: 'reservedUntil', label: 'Reserved until', type: 'date', readonly: true, list: false, create: false, update: false },
+      { name: 'reservedOrderId', label: 'Reserved order', type: 'relation', readonly: true, list: false, create: false, update: false, relation: { entityKey: 'orders', labelField: 'orderNo' } },
       { name: 'deliveredAt', label: 'Delivered at', type: 'date', list: false },
       ...timestamps,
       softDeleteField,

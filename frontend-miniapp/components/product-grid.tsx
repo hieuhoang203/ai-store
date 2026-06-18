@@ -99,7 +99,7 @@ function ProductCard({
           <Image src={product.imageUrl} alt={product.name} fill sizes="180px" className="object-cover" />
         ) : (
           <div className="flex h-full items-center justify-center px-4 text-center">
-            <span className="text-2xl font-black text-emerald-300/80">{product.name.slice(0, 2).toUpperCase()}</span>
+            <span className="text-2xl font-bold text-emerald-300/80">{product.name.slice(0, 2).toUpperCase()}</span>
           </div>
         )}
         <div className="absolute left-2 top-2 max-w-[calc(100%-1rem)] truncate rounded-full border border-white/10 bg-black/55 px-2 py-0.5 text-[10px] font-bold text-emerald-200 backdrop-blur">
@@ -109,12 +109,12 @@ function ProductCard({
 
       <div className="space-y-2 p-2.5">
         <div>
-          <h3 className="line-clamp-1 text-sm font-black leading-5 text-white">{product.name}</h3>
+          <h3 className="line-clamp-1 text-sm font-bold leading-5 text-white">{product.name}</h3>
           <p className="mt-0.5 line-clamp-1 text-[11px] leading-4 text-zinc-500">{product.description || text.digitalFallback}</p>
         </div>
         <div>
           <p className="text-[10px] font-semibold text-zinc-500">{text.priceRange}</p>
-          <p className="text-sm font-black text-emerald-300">{formatPriceRange(product.variants)}</p>
+          <p className="text-sm font-bold text-emerald-300">{formatPriceRange(product.variants)}</p>
         </div>
       </div>
     </button>
@@ -145,13 +145,13 @@ function ProductDetail({
             {product.imageUrl ? (
               <Image src={product.imageUrl} alt={product.name} fill sizes="80px" className="object-cover" />
             ) : (
-              <span className="flex h-full items-center justify-center text-xl font-black text-emerald-300/80">{product.name.slice(0, 2).toUpperCase()}</span>
+              <span className="flex h-full items-center justify-center text-xl font-bold text-emerald-300/80">{product.name.slice(0, 2).toUpperCase()}</span>
             )}
           </div>
           <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-300">{product.category || "Digital"}</p>
-            <h2 className="line-clamp-2 text-xl font-black leading-6 text-white">{product.name}</h2>
-            <p className="mt-1 text-sm font-black text-emerald-300">{formatPriceRange(product.variants)}</p>
+            <h2 className="line-clamp-2 text-xl font-bold leading-6 text-white">{product.name}</h2>
+            <p className="mt-1 text-sm font-bold text-emerald-300">{formatPriceRange(product.variants)}</p>
           </div>
         </div>
         {product.description ? <p className="mt-3 text-sm leading-6 text-zinc-400">{product.description}</p> : null}
@@ -197,7 +197,7 @@ function VariantCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="line-clamp-2 text-base font-black leading-5 text-white">{variant.name}</h3>
+          <h3 className="line-clamp-2 text-base font-bold leading-5 text-white">{variant.name}</h3>
           <div className="mt-2 flex flex-wrap gap-2">
             {variant.durationDays ? (
               <InfoPill icon={<Clock className="h-3 w-3" />} label={`${variant.durationDays} ${text.days}`} />
@@ -212,7 +212,7 @@ function VariantCard({
           </div>
         </div>
         <div className="shrink-0 text-right">
-          <p className="text-lg font-black text-emerald-300">{formatMoney(variant.sellPrice)} đ</p>
+          <p className="text-lg font-bold text-emerald-300">{formatMoney(variant.sellPrice)} đ</p>
           <button
             disabled={outOfStock}
             onClick={() => onAdd({
@@ -222,7 +222,7 @@ function VariantCard({
               quantity: 1,
               availableStock,
             })}
-            className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-300 px-3 text-sm font-black text-black transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+            className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-300 px-3 text-sm font-bold text-black transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
           >
             <Plus className="h-4 w-4" />
             {outOfStock ? text.outOfStock : text.addPackage}

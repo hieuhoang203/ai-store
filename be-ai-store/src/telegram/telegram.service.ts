@@ -5,6 +5,8 @@ import { RoleName } from '../../generated/prisma/client.js';
 import { AuthService } from '../auth/auth.service';
 import { PrismaService } from '../database/prisma.service';
 
+const TELEGRAM_MESSAGE_LIMIT = 3900;
+
 @Injectable()
 export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TelegramService.name);
@@ -44,9 +46,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
   async sendMessage(telegramId: bigint | number | string, message: string) {
     if (!this.bot) return;
-    await this.bot.telegram.sendMessage(String(telegramId), message, {
-      parse_mode: 'HTML',
-    });
+    for (const chunk of this.chunkMessage(message)) {
+      await this.bot.telegram.sendMessage(String(telegramId), chunk);
+    }
   }
 
   private registerCommands(bot: Telegraf) {
@@ -109,5 +111,28 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     } catch {
       return false;
     }
+  }
+
+  private chunkMessage(message: string) {
+    if (message.length <= TELEGRAM_MESSAGE_LIMIT) {
+      return [message];
+    }
+
+    const chunks: string[] = [];
+    let current = '';
+
+    for (const line of message.split('\n')) {
+      const next = current ? `${current}\n${line}` : line;
+      if (next.length <= TELEGRAM_MESSAGE_LIMIT) {
+        current = next;
+        continue;
+      }
+
+      if (current) chunks.push(current);
+      current = line;
+    }
+
+    if (current) chunks.push(current);
+    return chunks;
   }
 }

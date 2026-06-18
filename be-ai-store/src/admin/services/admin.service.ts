@@ -3,6 +3,7 @@ import { Prisma } from '../../../generated/prisma/client.js';
 import { InventoryStatus, OrderStatus, PaymentStatus } from '../models/admin-enums.model';
 import { PrismaService } from '../../database/prisma.service';
 import { InventoryPasswordService } from '../../inventories/inventory-password.service';
+import { NotificationsService } from '../../notifications/notifications.service';
 import { ADMIN_ENTITIES, ADMIN_ENTITY_MAP } from '../models/admin-entity.model';
 import {
   AdminEntityConfig,
@@ -18,6 +19,7 @@ export class AdminService {
     private readonly repository: AdminRepository,
     private readonly prisma: PrismaService,
     private readonly inventoryPasswordService: InventoryPasswordService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async getEntities(): Promise<AdminEntitySummary[]> {
@@ -68,8 +70,11 @@ export class AdminService {
     if (entityKey === 'users' && roleId) {
       await this.assignUserRole(String((record as Record<string, unknown>).id), String(roleId));
     }
+    await this.announceCreatedEntity(entityKey, record);
 
-    return this.serializeRecord(config, record);
+    const serialized = this.serializeRecord(config, record);
+    this.decryptInventoryPassword(entityKey, serialized);
+    return serialized;
   }
 
   async update(entityKey: string, recordId: string, payload: Record<string, unknown>) {
@@ -83,7 +88,9 @@ export class AdminService {
       await this.assignUserRole(recordId, roleId ? String(roleId) : null);
     }
 
-    return this.serializeRecord(config, record);
+    const serialized = this.serializeRecord(config, record);
+    this.decryptInventoryPassword(entityKey, serialized);
+    return serialized;
   }
 
   async remove(entityKey: string, recordId: string) {
@@ -351,5 +358,24 @@ export class AdminService {
   private decryptInventoryPassword(entityKey: string, record: Record<string, unknown>) {
     if (entityKey !== 'inventories' || typeof record.encryptedPassword !== 'string') return;
     record.encryptedPassword = this.inventoryPasswordService.decrypt(record.encryptedPassword);
+  }
+
+  private async announceCreatedEntity(entityKey: string, record: unknown) {
+    const id = String((record as Record<string, unknown>).id || '');
+    if (!id) return;
+
+    if (entityKey === 'categories') {
+      await this.notificationsService.announceCategoryAdded(id);
+      return;
+    }
+
+    if (entityKey === 'products') {
+      await this.notificationsService.announceProductAdded(id);
+      return;
+    }
+
+    if (entityKey === 'inventories') {
+      await this.notificationsService.announceInventoryRestocked(id, 1);
+    }
   }
 }

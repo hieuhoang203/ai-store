@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   checkout,
   getPaymentStatus,
@@ -24,6 +24,7 @@ const text = {
   telegramRequired: "Vui l\u00f2ng m\u1edf Mini App t\u1eeb Telegram \u0111\u1ec3 thanh to\u00e1n",
   qrCreated: "\u0110\u00e3 t\u1ea1o m\u00e3 QR thanh to\u00e1n",
   checkoutFailed: "Thanh to\u00e1n th\u1ea5t b\u1ea1i",
+  paymentSuccess: "Thanh to\u00e1n th\u00e0nh c\u00f4ng. T\u00e0i kho\u1ea3n \u0111ang \u0111\u01b0\u1ee3c giao.",
   addedToCart: "\u0110\u00e3 th\u00eam v\u00e0o gi\u1ecf h\u00e0ng",
   outOfStock: "S\u1ea3n ph\u1ea9m n\u00e0y \u0111\u00e3 h\u1ebft h\u00e0ng",
   stockLimitReached: "\u0110\u00e3 \u0111\u1ea1t s\u1ed1 l\u01b0\u1ee3ng t\u1ed1i \u0111a trong kho",
@@ -33,14 +34,17 @@ const text = {
   profileText: "Th\u00f4ng tin Telegram, l\u1ecbch s\u1eed mua h\u00e0ng v\u00e0 quy\u1ec1n h\u1ed7 tr\u1ee3 s\u1ebd hi\u1ec3n th\u1ecb t\u1ea1i \u0111\u00e2y.",
 };
 
+const PAYMENT_RESULT_STORAGE_KEY = "ai-store-payment-result";
+
 export function MiniAppShell() {
   const [activeTab, setActiveTab] = useState<TabKey>("home");
   const [processing, setProcessing] = useState(false);
   const [paymentResult, setPaymentResult] = useState<CheckoutResult | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const { data: products = [], isLoading } = useQuery({ queryKey: ["products"], queryFn: getProducts });
-  const { items, addItem, removeItem, updateQuantity } = useCartStore();
+  const { items, addItem, removeItem, updateQuantity, clear } = useCartStore();
   const { initData } = useTelegramUser();
+  const notifiedPaymentIds = useRef(new Set<string>());
   useTelegramViewport();
   const { data: paymentStatus } = useQuery({
     queryKey: ["payment-status", paymentResult?.payment.id],
@@ -48,6 +52,8 @@ export function MiniAppShell() {
     enabled: Boolean(paymentResult?.payment.id),
     refetchInterval: (query) => {
       const orderStatus = query.state.data?.order.status;
+      const paymentStatus = query.state.data?.payment.status;
+      if (paymentStatus === "FAILED") return false;
       return orderStatus === "DELIVERED" ? false : 3000;
     },
   });
@@ -57,6 +63,34 @@ export function MiniAppShell() {
     () => items.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0),
     [items],
   );
+
+  useEffect(() => {
+    const storedPaymentResult = window.sessionStorage.getItem(PAYMENT_RESULT_STORAGE_KEY);
+    if (!storedPaymentResult) return;
+
+    try {
+      setPaymentResult(JSON.parse(storedPaymentResult) as CheckoutResult);
+      setActiveTab("cart");
+    } catch {
+      window.sessionStorage.removeItem(PAYMENT_RESULT_STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    const paymentId = paymentStatus?.payment.id;
+    const paid =
+      paymentStatus?.payment.status === "PAID" ||
+      paymentStatus?.order.status === "DELIVERED";
+
+    if (!paymentId || !paid || notifiedPaymentIds.current.has(paymentId)) {
+      return;
+    }
+
+    notifiedPaymentIds.current.add(paymentId);
+    showToast({ type: "success", message: text.paymentSuccess });
+    window.sessionStorage.removeItem(PAYMENT_RESULT_STORAGE_KEY);
+    clear();
+  }, [clear, paymentStatus]);
 
   function showToast(nextToast: ToastState) {
     setToast(nextToast);
@@ -96,6 +130,7 @@ export function MiniAppShell() {
     try {
       const result = await checkout(initData, items);
       setPaymentResult(result);
+      window.sessionStorage.setItem(PAYMENT_RESULT_STORAGE_KEY, JSON.stringify(result));
       showToast({ type: "success", message: text.qrCreated });
     } catch (error) {
       showToast({

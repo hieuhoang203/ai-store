@@ -105,7 +105,7 @@ export function CategoryView({ onAdd }: { onAdd: (item: CartItem) => void }) {
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-200">{text.categoryLabel}</p>
         <div className="mt-2 flex items-end justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-black text-white">{text.categoryTitle}</h2>
+            <h2 className="text-2xl font-bold text-white">{text.categoryTitle}</h2>
             <p className="mt-1 text-sm text-zinc-400">{categories.length} loại, {totalProducts} {text.productLabel} {text.activeSelling}</p>
           </div>
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-black/35 text-emerald-300">
@@ -123,7 +123,7 @@ export function CategoryView({ onAdd }: { onAdd: (item: CartItem) => void }) {
             style={{ animationDelay: `${index * 36}ms` }}
           >
             <CategoryIcon icon={category.icon} name={category.name} />
-            <span className="mt-3 line-clamp-2 block text-base font-black leading-5 text-white">{category.name}</span>
+            <span className="mt-3 line-clamp-2 block text-base font-bold leading-5 text-white">{category.name}</span>
             <span className="mt-2 inline-flex rounded-full bg-black/35 px-2.5 py-1 text-xs font-bold text-emerald-200">
               {category.productCount} {text.productLabel}
             </span>
@@ -161,7 +161,7 @@ function CategoryProductsView({
           <CategoryIcon icon={category.icon} name={category.name} />
           <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-300">{text.productsByCategory}</p>
-            <h2 className="truncate text-xl font-black text-white">{category.name}</h2>
+            <h2 className="truncate text-xl font-bold text-white">{category.name}</h2>
           </div>
         </div>
       </div>
@@ -208,19 +208,19 @@ function CategoryProductCard({
         {product.imageUrl ? (
           <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
         ) : (
-          <span className="m-auto text-xl font-black text-emerald-300/80">{product.name.slice(0, 2).toUpperCase()}</span>
+          <span className="m-auto text-xl font-bold text-emerald-300/80">{product.name.slice(0, 2).toUpperCase()}</span>
         )}
       </div>
 
       <div className="min-w-0 flex-1">
-        <h3 className="line-clamp-2 text-sm font-black leading-5 text-white">{product.name}</h3>
+        <h3 className="line-clamp-2 text-sm font-bold leading-5 text-white">{product.name}</h3>
         <p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-500">{product.description || text.digitalFallback}</p>
         <div className="mt-2 flex items-center justify-between gap-2">
           <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 text-[11px] font-bold text-zinc-300">
             <Search className="h-3 w-3 text-emerald-300" />
             {product.variants.length} {text.packages}
           </span>
-          <span className="text-sm font-black text-emerald-300">{formatPriceRange(product.variants)}</span>
+          <span className="text-sm font-bold text-emerald-300">{formatPriceRange(product.variants)}</span>
         </div>
       </div>
     </button>
@@ -251,13 +251,13 @@ function ProductDetail({
             {product.imageUrl ? (
               <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
             ) : (
-              <span className="m-auto text-xl font-black text-emerald-300/80">{product.name.slice(0, 2).toUpperCase()}</span>
+              <span className="m-auto text-xl font-bold text-emerald-300/80">{product.name.slice(0, 2).toUpperCase()}</span>
             )}
           </div>
           <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-300">{product.category || "Digital"}</p>
-            <h2 className="line-clamp-2 text-xl font-black leading-6 text-white">{product.name}</h2>
-            <p className="mt-1 text-sm font-black text-emerald-300">{formatPriceRange(product.variants)}</p>
+            <h2 className="line-clamp-2 text-xl font-bold leading-6 text-white">{product.name}</h2>
+            <p className="mt-1 text-sm font-bold text-emerald-300">{formatPriceRange(product.variants)}</p>
           </div>
         </div>
         {product.description ? <p className="mt-3 text-sm leading-6 text-zinc-400">{product.description}</p> : null}
@@ -303,7 +303,7 @@ function VariantCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="line-clamp-2 text-base font-black leading-5 text-white">{variant.name}</h3>
+          <h3 className="line-clamp-2 text-base font-bold leading-5 text-white">{variant.name}</h3>
           <div className="mt-2 flex flex-wrap gap-2">
             {variant.durationDays ? (
               <InfoPill icon={<Clock className="h-3 w-3" />} label={`${variant.durationDays} ${text.days}`} />
@@ -318,7 +318,7 @@ function VariantCard({
           </div>
         </div>
         <div className="shrink-0 text-right">
-          <p className="text-lg font-black text-emerald-300">{formatMoney(variant.sellPrice)} đ</p>
+          <p className="text-lg font-bold text-emerald-300">{formatMoney(variant.sellPrice)} đ</p>
           <button
             disabled={outOfStock}
             onClick={() => onAdd({
@@ -328,7 +328,7 @@ function VariantCard({
               quantity: 1,
               availableStock,
             })}
-            className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-300 px-3 text-sm font-black text-black transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+            className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-300 px-3 text-sm font-bold text-black transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
           >
             <Plus className="h-4 w-4" />
             {outOfStock ? text.outOfStock : text.addPackage}
@@ -352,7 +352,7 @@ function CategoryIcon({ icon, name }: { icon?: string | null; name: string }) {
   const isImage = Boolean(icon && /^https?:\/\//i.test(icon));
 
   return (
-    <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-emerald-300/20 bg-emerald-300/10 text-lg font-black text-emerald-200">
+    <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-emerald-300/20 bg-emerald-300/10 text-lg font-bold text-emerald-200">
       {isImage ? <img src={icon!} alt={name} className="h-full w-full object-cover" /> : icon || <ImageIcon className="h-5 w-5" />}
     </span>
   );

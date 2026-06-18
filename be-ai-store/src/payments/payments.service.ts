@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   Order,
@@ -26,8 +26,13 @@ type OrderForPayment = Order & {
   }>;
 };
 
+export const PAYMENT_QR_TTL_MS = 3 * 60 * 1000;
+
 @Injectable()
-export class PaymentsService {
+export class PaymentsService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(PaymentsService.name);
+  private expiredPaymentTimer?: NodeJS.Timeout;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly payosService: PayosService,
@@ -36,7 +41,21 @@ export class PaymentsService {
     private readonly configService: ConfigService,
   ) {}
 
-  async createPayosPayment(orderId: string) {
+  onModuleInit() {
+    this.expiredPaymentTimer = setInterval(() => {
+      void this.processExpiredPendingPayments().catch((error: Error) => {
+        this.logger.error(`Process expired pending payments failed: ${error.message}`);
+      });
+    }, 30_000);
+  }
+
+  onModuleDestroy() {
+    if (this.expiredPaymentTimer) {
+      clearInterval(this.expiredPaymentTimer);
+    }
+  }
+
+  async createPayosPayment(orderId: string, expiresAt: Date) {
     const order = await this.prisma.order.findUniqueOrThrow({
       where: { id: orderId },
       include: {
@@ -72,6 +91,7 @@ export class PaymentsService {
         items: this.toPayosItems(order),
         returnUrl: this.getMiniAppUrl('payment=success'),
         cancelUrl: this.getMiniAppUrl('payment=cancelled'),
+        expiredAt: Math.floor(expiresAt.getTime() / 1000),
       });
 
       return this.prisma.payment.update({
@@ -90,6 +110,7 @@ export class PaymentsService {
             accountNumber: paymentLink.accountNumber,
             accountName: paymentLink.accountName,
             bin: paymentLink.bin,
+            expiresAt: expiresAt.toISOString(),
           }),
         },
       });
@@ -106,6 +127,7 @@ export class PaymentsService {
     const data = this.payosService.verifyWebhook(body);
 
     if (!body.success || body.code !== '00' || data.code !== '00') {
+      await this.expirePaymentByOrderCode(Number(data.orderCode));
       return { ok: true };
     }
 
@@ -149,7 +171,7 @@ export class PaymentsService {
     const updated = await this.prisma.payment.updateMany({
       where: {
         id: paymentId,
-        status: { not: PaymentStatus.PAID },
+        status: PaymentStatus.PENDING,
       },
       data: {
         status: PaymentStatus.PAID,
@@ -160,37 +182,70 @@ export class PaymentsService {
     const payment = await this.prisma.payment.findUniqueOrThrow({
       where: { id: paymentId },
       include: {
-        order: { include: { items: true } },
+        order: {
+          include: {
+            items: {
+              include: {
+                deliveries: {
+                  where: { isDeleted: false },
+                  orderBy: { createdAt: 'asc' },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
-    if (!updated.count) {
+    if (!updated.count && payment.order.status === OrderStatus.DELIVERED) {
       return payment;
     }
 
-    await this.prisma.order.update({
-      where: { id: payment.orderId },
-      data: {
-        paymentStatus: PaymentStatus.PAID,
-        status: OrderStatus.PAID,
-      },
-    });
+    if (!updated.count && payment.status !== PaymentStatus.PAID) {
+      return payment;
+    }
+
+    if (updated.count || payment.order.status !== OrderStatus.PAID) {
+      await this.prisma.order.update({
+        where: { id: payment.orderId },
+        data: {
+          paymentStatus: PaymentStatus.PAID,
+          status: OrderStatus.PAID,
+        },
+      });
+    }
+
+    const soldInventories = await this.inventoriesService.markReservedInventoriesSold(payment.orderId);
+    const soldInventoriesByVariant = new Map<string, typeof soldInventories>();
+    for (const inventory of soldInventories) {
+      const inventories = soldInventoriesByVariant.get(inventory.variantId) || [];
+      inventories.push(inventory);
+      soldInventoriesByVariant.set(inventory.variantId, inventories);
+    }
 
     for (const item of payment.order.items) {
-      for (let index = 0; index < item.quantity; index += 1) {
-        const inventory = await this.inventoriesService.sellFirstAvailableInventory(
-          item.variantId,
-          payment.order.userId,
-        );
+      const existingDeliveryInventoryIds = new Set(item.deliveries.map((delivery) => delivery.inventoryId));
+      const inventories = soldInventoriesByVariant.get(item.variantId) || [];
+      const missingInventories = inventories
+        .filter((inventory) => !existingDeliveryInventoryIds.has(inventory.id))
+        .slice(0, Math.max(item.quantity - item.deliveries.length, 0));
 
-        if (index === 0) {
+      for (let index = 0; index < missingInventories.length; index += 1) {
+        const inventory = missingInventories[index];
+        if (!item.inventoryId && index === 0 && inventory) {
           await this.prisma.orderItem.update({
             where: { id: item.id },
             data: { inventoryId: inventory.id },
           });
         }
 
-        await this.deliveriesService.createDelivery(item.id, inventory.id);
+        if (inventory) {
+          await this.deliveriesService.createDelivery(item.id, inventory.id);
+        }
+      }
+
+      if (item.deliveries.length + missingInventories.length < item.quantity) {
+        throw new BadRequestException('Reserved inventory is missing for paid order');
       }
     }
 
@@ -198,11 +253,15 @@ export class PaymentsService {
       where: { id: payment.orderId },
       data: { status: OrderStatus.DELIVERED },
     });
+    await this.deliveriesService.sendOrderDeliveryMessage(payment.orderId);
 
     return payment;
   }
 
   async getPaymentStatus(paymentId: string) {
+    await this.syncPendingPayosPayment(paymentId);
+    await this.expirePendingPayment(paymentId);
+
     const payment = await this.prisma.payment.findUniqueOrThrow({
       where: { id: paymentId },
       include: {
@@ -222,11 +281,17 @@ export class PaymentsService {
       },
     });
 
+    const deliveryMessage =
+      payment.order.status === OrderStatus.DELIVERED
+        ? await this.deliveriesService.generateDeliveryContent(payment.orderId)
+        : null;
+
     return {
       payment: {
         id: payment.id,
         status: payment.status,
         paidAt: payment.paidAt,
+        expiresAt: this.getPaymentExpiresAt(payment),
       },
       order: {
         id: payment.order.id,
@@ -244,7 +309,143 @@ export class PaymentsService {
           variantName: item.variant.name,
         })),
       ),
+      deliveryMessage,
     };
+  }
+
+  private async syncPendingPayosPayment(paymentId: string) {
+    const payment = await this.prisma.payment.findUniqueOrThrow({
+      where: { id: paymentId },
+      include: { order: true },
+    });
+
+    if (payment.status !== PaymentStatus.PENDING || payment.provider !== PaymentProvider.BANKING_QR) {
+      return;
+    }
+
+    const orderCode = this.getPayosOrderCode(payment.order.orderNo);
+
+    try {
+      const paymentLink = await this.payosService.getPaymentLink(orderCode);
+      if (paymentLink.status !== 'PAID') {
+        return;
+      }
+
+      if (this.toVndInteger(payment.amount) !== Number(paymentLink.amount)) {
+        throw new BadRequestException('Payment amount does not match payOS payment link');
+      }
+
+      await this.confirmPayment(payment.id);
+    } catch (error) {
+      this.logger.warn(
+        `Cannot sync payOS payment ${payment.id}: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
+    }
+  }
+
+  private async processExpiredPendingPayments() {
+    const candidates = await this.prisma.payment.findMany({
+      where: {
+        status: PaymentStatus.PENDING,
+        createdAt: { lt: new Date(Date.now() - PAYMENT_QR_TTL_MS) },
+      },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+      take: 100,
+    });
+
+    for (const candidate of candidates) {
+      await this.syncPendingPayosPayment(candidate.id);
+      await this.expirePendingPayment(candidate.id);
+    }
+  }
+
+  private async expirePendingPayment(paymentId: string) {
+    const payment = await this.prisma.payment.findUniqueOrThrow({
+      where: { id: paymentId },
+    });
+
+    if (payment.status !== PaymentStatus.PENDING || !this.isExpiredPayment(payment)) {
+      return;
+    }
+
+    await this.expirePayment(payment.id);
+  }
+
+  private async expirePayment(paymentId: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+    });
+
+    if (!payment) return { count: 0 };
+
+    const updated = await this.prisma.payment.updateMany({
+      where: {
+        id: paymentId,
+        status: PaymentStatus.PENDING,
+      },
+      data: { status: PaymentStatus.FAILED },
+    });
+
+    if (updated.count) {
+      await this.inventoriesService.releaseReservationForOrder(payment.orderId);
+      await this.prisma.order.updateMany({
+        where: {
+          id: payment.orderId,
+          status: OrderStatus.PENDING,
+        },
+        data: {
+          status: OrderStatus.CANCELLED,
+          paymentStatus: PaymentStatus.FAILED,
+        },
+      });
+    }
+
+    return updated;
+  }
+
+  private async expirePaymentByOrderCode(orderCode: number) {
+    if (!Number.isSafeInteger(orderCode)) return;
+
+    const order = await this.prisma.order.findUnique({
+      where: { orderNo: `AI${orderCode}` },
+      include: { payments: true },
+    });
+
+    if (!order) return;
+
+    await Promise.all(
+      order.payments
+        .filter((payment) => payment.status === PaymentStatus.PENDING)
+        .map((payment) => this.expirePayment(payment.id)),
+    );
+  }
+
+  private isExpiredPayment(payment: { qrContent: string | null }) {
+    const expiresAt = this.getPaymentExpiresAt(payment);
+    return Boolean(expiresAt && new Date(expiresAt).getTime() <= Date.now());
+  }
+
+  private getPaymentExpiresAt(payment: { qrContent: string | null }) {
+    const qrContent = this.parseQrContent(payment.qrContent);
+    if (!qrContent || typeof qrContent !== 'object' || !('expiresAt' in qrContent)) {
+      return null;
+    }
+
+    const expiresAt = (qrContent as { expiresAt?: unknown }).expiresAt;
+    return typeof expiresAt === 'string' ? expiresAt : null;
+  }
+
+  private parseQrContent(qrContent: string | null) {
+    if (!qrContent) return null;
+
+    try {
+      return JSON.parse(qrContent) as unknown;
+    } catch {
+      return null;
+    }
   }
 
   private createPaymentContent(orderNo: string) {

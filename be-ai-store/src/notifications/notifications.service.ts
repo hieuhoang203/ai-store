@@ -1,10 +1,26 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import {
+  InventoryStatus,
+  NotificationType,
+  UserStatus,
+} from '../../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service';
+import { TelegramService } from '../telegram/telegram.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
+import {
+  renderNewStockNotification,
+  renderOutOfStockNotification,
+  type StockNotificationProduct,
+} from './stock-notification-message';
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(NotificationsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly telegramService: TelegramService,
+  ) {}
 
   create(dto: CreateNotificationDto) {
     return this.prisma.notification.create({ data: dto });
@@ -15,5 +31,159 @@ export class NotificationsService {
       where: { userId, isDeleted: false },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async announceInventoryRestocked(inventoryId: string, quantity = 1) {
+    const inventory = await this.prisma.inventory.findUnique({
+      where: { id: inventoryId },
+      include: {
+        variant: {
+          include: {
+            product: { include: { categoryRef: true } },
+          },
+        },
+      },
+    });
+
+    if (!inventory || inventory.isDeleted || inventory.status !== InventoryStatus.AVAILABLE) {
+      return;
+    }
+
+    const product = this.toStockNotificationProduct(inventory.variant);
+    const content = renderNewStockNotification({ ...product, quantity });
+    await this.broadcast({
+      title: 'Hàng mới đã cập bến tại AI Store',
+      content,
+      type: NotificationType.SYSTEM,
+    });
+  }
+
+  async announceProductAdded(productId: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      include: { categoryRef: true },
+    });
+
+    if (!product || product.isDeleted) return;
+
+    const content = renderNewStockNotification({
+      serviceName: product.name,
+      categoryName: product.categoryRef?.name,
+      variantName: 'Đang cập nhật',
+      quantity: 0,
+    });
+
+    await this.broadcast({
+      title: 'AI Store vừa thêm sản phẩm mới',
+      content,
+      type: NotificationType.SYSTEM,
+    });
+  }
+
+  async announceCategoryAdded(categoryId: string) {
+    const category = await this.prisma.category.findUnique({
+      where: { id: categoryId },
+    });
+
+    if (!category || category.isDeleted) return;
+
+    const content = renderNewStockNotification({
+      serviceName: 'Danh mục sản phẩm mới',
+      categoryName: category.name,
+      variantName: 'Đang cập nhật',
+      quantity: 0,
+    });
+
+    await this.broadcast({
+      title: 'AI Store vừa thêm danh mục mới',
+      content,
+      type: NotificationType.SYSTEM,
+    });
+  }
+
+  async announceVariantOutOfStock(variantId: string) {
+    const variant = await this.prisma.productVariant.findUnique({
+      where: { id: variantId },
+      include: {
+        product: { include: { categoryRef: true } },
+        _count: {
+          select: {
+            inventories: {
+              where: {
+                status: InventoryStatus.AVAILABLE,
+                isDeleted: false,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!variant || variant.isDeleted || variant._count.inventories > 0) {
+      return;
+    }
+
+    const content = renderOutOfStockNotification(this.toStockNotificationProduct(variant));
+    await this.broadcast({
+      title: 'Thông báo hết hàng',
+      content,
+      type: NotificationType.SYSTEM,
+    });
+  }
+
+  private async broadcast({
+    title,
+    content,
+    type,
+  }: {
+    title: string;
+    content: string;
+    type: NotificationType;
+  }) {
+    const users = await this.prisma.user.findMany({
+      where: {
+        status: UserStatus.ACTIVE,
+        isDeleted: false,
+      },
+      select: { id: true, telegramId: true },
+    });
+
+    if (!users.length) return;
+
+    await this.prisma.notification.createMany({
+      data: users.map((user) => ({
+        userId: user.id,
+        type,
+        title,
+        content,
+      })),
+    });
+
+    for (const user of users) {
+      if (!user.telegramId) continue;
+      try {
+        await this.telegramService.sendMessage(user.telegramId, content);
+      } catch (error) {
+        this.logger.warn(
+          `Cannot send notification to ${user.telegramId}: ${
+            error instanceof Error ? error.message : 'Unknown error'
+          }`,
+        );
+      }
+    }
+  }
+
+  private toStockNotificationProduct(variant: {
+    name: string;
+    product: {
+      name: string;
+      categoryRef?: { name: string } | null;
+    };
+  }): StockNotificationProduct {
+    return {
+      serviceName: variant.product.name,
+      categoryName: variant.product.categoryRef?.name,
+      variantName: variant.name,
+    };
   }
 }

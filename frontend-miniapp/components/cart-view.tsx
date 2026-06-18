@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
-import { CheckCircle2, ExternalLink, Minus, Plus, Trash2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock3, ExternalLink, Minus, Plus, Trash2 } from "lucide-react";
 import type { CheckoutResult, PaymentStatusResult } from "@/features/orders/order-service";
 import type { CartItem } from "@/store/cart-store";
 import { EmptyState } from "./empty-state";
@@ -39,79 +39,89 @@ export function CartView({
 
       {paymentStatus?.payment.status === "PAID" ? (
         <PaymentSuccessPanel status={paymentStatus} />
+      ) : paymentStatus?.payment.status === "FAILED" ? (
+        <PaymentExpiredPanel orderNo={paymentResult?.order.orderNo} />
       ) : paymentResult ? (
         <PaymentPanel result={paymentResult} />
       ) : null}
 
-      {items.map((item, index) => (
-        <article
-          key={item.variantId}
-          className="mini-rise rounded-2xl border border-white/10 bg-white/[0.045] p-4 shadow-xl shadow-black/20"
-          style={{ animationDelay: `${index * 44}ms` }}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h3 className="line-clamp-2 text-sm font-black text-white">{item.name}</h3>
-              <p className="mt-1 text-sm font-bold text-emerald-300">{Number(item.price).toLocaleString("vi-VN")} đ</p>
-              {item.availableStock !== undefined ? (
-                <p className="mt-1 text-xs font-semibold text-zinc-500">Còn {item.availableStock} trong kho</p>
-              ) : null}
+      {!paymentResult ? (
+        <>
+          {items.map((item, index) => (
+            <article
+              key={item.variantId}
+              className="mini-rise rounded-2xl border border-white/10 bg-white/[0.045] p-4 shadow-xl shadow-black/20"
+              style={{ animationDelay: `${index * 44}ms` }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="line-clamp-2 text-sm font-bold text-white">{item.name}</h3>
+                  <p className="mt-1 text-sm font-bold text-emerald-300">{Number(item.price).toLocaleString("vi-VN")} đ</p>
+                  {item.availableStock !== undefined ? (
+                    <p className="mt-1 text-xs font-semibold text-zinc-500">Còn {item.availableStock} trong kho</p>
+                  ) : null}
+                </div>
+                <button
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-400/20 bg-red-400/10 text-red-300"
+                  onClick={() => onRemove(item.variantId)}
+                  aria-label={`Xóa ${item.name}`}
+                  disabled={locked}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <div className="inline-flex items-center rounded-lg border border-white/10 bg-black/25 p-1">
+                  <button
+                    onClick={() => onQuantityChange(item.variantId, item.quantity - 1)}
+                    className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-300 hover:bg-white/10"
+                    aria-label="Giảm số lượng"
+                    disabled={locked}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </button>
+                  <span className="w-9 text-center text-sm font-bold text-white">{item.quantity}</span>
+                  <button
+                    onClick={() => onQuantityChange(item.variantId, item.quantity + 1)}
+                    className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-300 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Tăng số lượng"
+                    disabled={locked || (item.availableStock !== undefined && item.quantity >= item.availableStock)}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+                <span className="text-sm font-bold text-white">{(Number(item.price) * item.quantity).toLocaleString("vi-VN")} đ</span>
+              </div>
+            </article>
+          ))}
+
+          <div className="sticky bottom-3 rounded-2xl border border-emerald-300/25 bg-[#071008]/95 p-3 shadow-2xl shadow-black/50 backdrop-blur">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-semibold text-zinc-400">Tổng thanh toán</span>
+              <span className="text-lg font-bold text-emerald-300">{total.toLocaleString("vi-VN")} đ</span>
             </div>
             <button
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-400/20 bg-red-400/10 text-red-300"
-              onClick={() => onRemove(item.variantId)}
-              aria-label={`Xóa ${item.name}`}
-              disabled={locked}
+              disabled={locked || !items.length}
+              onClick={onCheckout}
+              className="h-12 w-full rounded-lg bg-emerald-300 text-sm font-bold text-black transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <Trash2 className="h-4 w-4" />
+              {processing ? "Đang tạo mã QR..." : paymentResult ? "Đã tạo mã QR" : "Thanh toán"}
             </button>
           </div>
-
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <div className="inline-flex items-center rounded-lg border border-white/10 bg-black/25 p-1">
-              <button
-                onClick={() => onQuantityChange(item.variantId, item.quantity - 1)}
-                className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-300 hover:bg-white/10"
-                aria-label="Giảm số lượng"
-                disabled={locked}
-              >
-                <Minus className="h-4 w-4" />
-              </button>
-              <span className="w-9 text-center text-sm font-black text-white">{item.quantity}</span>
-              <button
-                onClick={() => onQuantityChange(item.variantId, item.quantity + 1)}
-                className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-300 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Tăng số lượng"
-                disabled={locked || (item.availableStock !== undefined && item.quantity >= item.availableStock)}
-              >
-                <Plus className="h-4 w-4" />
-              </button>
-            </div>
-            <span className="text-sm font-black text-white">{(Number(item.price) * item.quantity).toLocaleString("vi-VN")} đ</span>
-          </div>
-        </article>
-      ))}
-
-      <div className="sticky bottom-3 rounded-2xl border border-emerald-300/25 bg-[#071008]/95 p-3 shadow-2xl shadow-black/50 backdrop-blur">
-        <div className="mb-3 flex items-center justify-between">
-          <span className="text-sm font-semibold text-zinc-400">Tổng thanh toán</span>
-          <span className="text-lg font-black text-emerald-300">{total.toLocaleString("vi-VN")} đ</span>
-        </div>
-        <button
-          disabled={locked || !items.length}
-          onClick={onCheckout}
-          className="h-12 w-full rounded-lg bg-emerald-300 text-sm font-black text-black transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {processing ? "Đang tạo mã QR..." : paymentResult ? "Đã tạo mã QR" : "Thanh toán"}
-        </button>
-      </div>
+        </>
+      ) : null}
     </section>
   );
 }
 
 function PaymentPanel({ result }: { result: CheckoutResult }) {
   const [qrImage, setQrImage] = useState<string | null>(null);
+  const [remainingSeconds, setRemainingSeconds] = useState(() =>
+    getRemainingSeconds(result.payment.qrContent?.expiresAt),
+  );
   const qr = result.payment.qrContent;
+  const expired = remainingSeconds <= 0;
 
   useEffect(() => {
     let mounted = true;
@@ -137,6 +147,14 @@ function PaymentPanel({ result }: { result: CheckoutResult }) {
     };
   }, [qr?.qrCode]);
 
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setRemainingSeconds(getRemainingSeconds(qr?.expiresAt));
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [qr?.expiresAt]);
+
   if (!qr) return null;
 
   return (
@@ -144,13 +162,38 @@ function PaymentPanel({ result }: { result: CheckoutResult }) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">Mã thanh toán</p>
-          <h2 className="mt-1 text-xl font-black text-white">{Number(qr.amount).toLocaleString("vi-VN")} đ</h2>
+          <h2 className="mt-1 text-xl font-bold text-white">{Number(qr.amount).toLocaleString("vi-VN")} đ</h2>
         </div>
-        <span className="rounded-full bg-black/35 px-3 py-1 text-xs font-black text-emerald-200">{result.order.orderNo}</span>
+        <span className="rounded-full bg-black/35 px-3 py-1 text-xs font-bold text-emerald-200">{result.order.orderNo}</span>
       </div>
 
-      <div className="mt-4 rounded-xl bg-white p-3">
-        {qrImage ? <img src={qrImage} alt="Mã QR thanh toán" className="mx-auto h-64 w-64" /> : null}
+      <div className="relative mt-4 rounded-xl bg-white p-3">
+        {qrImage ? (
+          <img
+            src={qrImage}
+            alt="Mã QR thanh toán"
+            className={`mx-auto h-64 w-64 ${expired ? "opacity-20 grayscale" : ""}`}
+          />
+        ) : null}
+        {expired ? (
+          <div className="absolute inset-3 flex items-center justify-center rounded-lg bg-black/65 text-sm font-bold text-white">
+            QR đã hết hạn
+          </div>
+        ) : null}
+      </div>
+
+      <div className={`mt-3 flex items-center justify-between gap-3 rounded-lg border p-3 ${
+        expired
+          ? "border-red-400/25 bg-red-400/10 text-red-100"
+          : "border-emerald-300/20 bg-black/25 text-emerald-100"
+      }`}>
+        <span className="inline-flex items-center gap-2 text-sm font-bold">
+          {expired ? <AlertCircle className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
+          {expired ? "QR đã hết hạn" : "QR hết hạn sau"}
+        </span>
+        <span className="text-lg font-bold tabular-nums">
+          {formatRemainingTime(remainingSeconds)}
+        </span>
       </div>
 
       <dl className="mt-4 space-y-2 text-sm">
@@ -160,15 +203,21 @@ function PaymentPanel({ result }: { result: CheckoutResult }) {
         <PaymentInfo label="Nội dung CK" value={qr.content} important />
       </dl>
 
-      <a
-        href={qr.checkoutUrl}
-        target="_blank"
-        rel="noreferrer"
-        className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-300 text-sm font-black text-black"
-      >
-        Mở trang thanh toán
-        <ExternalLink className="h-4 w-4" />
-      </a>
+      {expired ? (
+        <div className="mt-4 flex h-11 w-full items-center justify-center rounded-lg border border-red-400/25 bg-red-400/10 text-sm font-bold text-red-100">
+          Vui lòng tạo đơn thanh toán mới
+        </div>
+      ) : (
+        <a
+          href={qr.checkoutUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-300 text-sm font-bold text-black"
+        >
+          Mở trang thanh toán
+          <ExternalLink className="h-4 w-4" />
+        </a>
+      )}
 
       <p className="mt-3 text-xs leading-5 text-zinc-400">
         Hệ thống chỉ xác nhận đơn sau khi nhận webhook hợp lệ từ payOS. Vui lòng không tự sửa số tiền hoặc nội dung chuyển khoản.
@@ -186,18 +235,22 @@ function PaymentSuccessPanel({ status }: { status: PaymentStatusResult }) {
         </span>
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">Thanh toán thành công</p>
-          <h2 className="mt-1 text-xl font-black text-white">{status.order.orderNo}</h2>
+          <h2 className="mt-1 text-xl font-bold text-white">{status.order.orderNo}</h2>
           <p className="mt-1 text-sm leading-5 text-zinc-400">
             Tài khoản đã được gửi qua Telegram. Bạn cũng có thể xem lại thông tin giao hàng bên dưới.
           </p>
         </div>
       </div>
 
-      {status.deliveries.length ? (
+      {status.deliveryMessage ? (
+        <pre className="mt-4 whitespace-pre-wrap break-words rounded-lg bg-black/35 p-3 text-sm leading-6 text-emerald-100">
+          {status.deliveryMessage}
+        </pre>
+      ) : status.deliveries.length ? (
         <div className="mt-4 space-y-3">
           {status.deliveries.map((delivery) => (
             <article key={delivery.id} className="rounded-xl border border-white/10 bg-black/28 p-3">
-              <p className="text-sm font-black text-white">
+              <p className="text-sm font-bold text-white">
                 {delivery.productName} - {delivery.variantName}
               </p>
               <pre className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-black/35 p-3 text-sm leading-6 text-emerald-100">
@@ -213,6 +266,36 @@ function PaymentSuccessPanel({ status }: { status: PaymentStatusResult }) {
       )}
     </section>
   );
+}
+
+function PaymentExpiredPanel({ orderNo }: { orderNo?: string }) {
+  return (
+    <section className="rounded-2xl border border-red-400/30 bg-red-400/10 p-4 shadow-xl shadow-black/20">
+      <div className="flex items-start gap-3">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-400/20 text-red-100">
+          <AlertCircle className="h-6 w-6" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-200">QR đã hết hạn</p>
+          <h2 className="mt-1 text-xl font-bold text-white">{orderNo || "Đơn thanh toán"}</h2>
+          <p className="mt-1 text-sm leading-5 text-zinc-300">
+            Mã QR chỉ có hiệu lực trong 3 phút. Vui lòng tạo đơn mới để tiếp tục thanh toán.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function getRemainingSeconds(expiresAt?: string | null) {
+  if (!expiresAt) return 0;
+  return Math.max(Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 1000), 0);
+}
+
+function formatRemainingTime(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function PaymentInfo({ label, value, important }: { label: string; value?: string | number | null; important?: boolean }) {

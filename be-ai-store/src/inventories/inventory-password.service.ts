@@ -38,7 +38,8 @@ export class InventoryPasswordService {
     ]).toString('utf8');
   }
 
-  private isEncrypted(value: string) {
+  isEncrypted(value: string | null | undefined) {
+    if (!value) return false;
     return value.startsWith(`${ENCRYPTED_PREFIX}:`);
   }
 

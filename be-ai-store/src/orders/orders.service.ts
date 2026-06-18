@@ -258,11 +258,64 @@ export class OrdersService {
         { status: OrderStatus.DELIVERED },
       ],
     } satisfies Prisma.OrderWhereInput;
-    const aggregate = await this.prisma.order.aggregate({
-      where,
-      _count: { id: true },
-      _sum: { totalAmount: true },
-    });
+    const [aggregate, orders] = await this.prisma.$transaction([
+      this.prisma.order.aggregate({
+        where,
+        _count: { id: true },
+        _sum: { totalAmount: true },
+      }),
+      this.prisma.order.findMany({
+        where,
+        select: {
+          items: {
+            where: { isDeleted: false },
+            select: {
+              quantity: true,
+              totalPrice: true,
+              variant: {
+                select: {
+                  product: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+    const serviceMap = new Map<
+      string,
+      { productId: string; serviceName: string; accountCount: number; totalSpent: Prisma.Decimal }
+    >();
+
+    for (const order of orders) {
+      for (const item of order.items) {
+        const product = item.variant.product;
+        const current =
+          serviceMap.get(product.id) ||
+          {
+            productId: product.id,
+            serviceName: product.name,
+            accountCount: 0,
+            totalSpent: new Prisma.Decimal(0),
+          };
+
+        current.accountCount += item.quantity;
+        current.totalSpent = current.totalSpent.add(item.totalPrice);
+        serviceMap.set(product.id, current);
+      }
+    }
+
+    const serviceStats = Array.from(serviceMap.values())
+      .sort((left, right) => right.accountCount - left.accountCount)
+      .map((item) => ({
+        ...item,
+        totalSpent: item.totalSpent.toString(),
+      }));
 
     return {
       user: {
@@ -274,7 +327,9 @@ export class OrdersService {
       stats: {
         orderCount: aggregate._count.id,
         totalSpent: aggregate._sum.totalAmount?.toString() || '0',
+        accountCount: serviceStats.reduce((sum, item) => sum + item.accountCount, 0),
       },
+      serviceStats,
       support: {
         telegram: this.configService.get<string>('SUPPORT_TELEGRAM') || '@hieuhv203',
       },

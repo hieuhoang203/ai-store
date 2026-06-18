@@ -118,7 +118,14 @@ export type ProfileSummary = {
   stats: {
     orderCount: number;
     totalSpent: string;
+    accountCount: number;
   };
+  serviceStats: Array<{
+    productId: string;
+    serviceName: string;
+    accountCount: number;
+    totalSpent: string;
+  }>;
   support: {
     telegram: string;
   };

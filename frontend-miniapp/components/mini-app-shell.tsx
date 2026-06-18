@@ -37,6 +37,7 @@ export function MiniAppShell() {
   const [activeTab, setActiveTab] = useState<TabKey>("home");
   const [processing, setProcessing] = useState(false);
   const [paymentResult, setPaymentResult] = useState<CheckoutResult | null>(null);
+  const [initialOrderId, setInitialOrderId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const { data: products = [], isLoading } = useQuery({ queryKey: ["products"], queryFn: getProducts });
   const { items, addItem, removeItem, updateQuantity, clear } = useCartStore();
@@ -62,6 +63,17 @@ export function MiniAppShell() {
   );
 
   useEffect(() => {
+    const launchTarget = readMiniAppLaunchTarget();
+    if (!launchTarget.orderId) return;
+
+    setInitialOrderId(launchTarget.orderId);
+    setActiveTab("orders");
+  }, []);
+
+  useEffect(() => {
+    const launchTarget = readMiniAppLaunchTarget();
+    if (launchTarget.orderId) return;
+
     const storedPaymentResult = window.sessionStorage.getItem(PAYMENT_RESULT_STORAGE_KEY);
     if (!storedPaymentResult) return;
 
@@ -175,7 +187,7 @@ export function MiniAppShell() {
         ) : null}
 
         {activeTab === "orders" ? (
-          <OrdersView initData={initData} />
+          <OrdersView initData={initData} initialOrderId={initialOrderId} />
         ) : null}
         {activeTab === "profile" ? (
           <ProfileView initData={initData} />
@@ -189,4 +201,17 @@ export function MiniAppShell() {
       />
     </main>
   );
+}
+
+function readMiniAppLaunchTarget() {
+  if (typeof window === "undefined") return { orderId: "" };
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const tab = searchParams.get("tab") || hashParams.get("tab");
+  const orderId = searchParams.get("orderId") || hashParams.get("orderId") || "";
+
+  return {
+    orderId: tab === "orders" ? orderId : "",
+  };
 }

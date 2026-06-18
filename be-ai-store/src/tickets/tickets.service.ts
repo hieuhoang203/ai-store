@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { OrderStatus, PaymentStatus } from '../../generated/prisma/client.js';
 import { AuthService } from '../auth/auth.service';
 import { PrismaService } from '../database/prisma.service';
-import { CreateTicketDto, CreateWarrantyTicketDto } from './dto/create-ticket.dto';
+import { CreateTicketDto, CreateWarrantyTicketDto, ListMyTicketsDto } from './dto/create-ticket.dto';
 
 @Injectable()
 export class TicketsService {
@@ -58,10 +58,42 @@ export class TicketsService {
     });
   }
 
+  async listMine(dto: ListMyTicketsDto) {
+    const user = await this.authService.getOrCreateTelegramUser(dto.initData);
+    const tickets = await this.prisma.ticket.findMany({
+      where: { userId: user.id, isDeleted: false },
+      include: {
+        order: {
+          select: {
+            id: true,
+            orderNo: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    return tickets.map((ticket) => ({
+      id: ticket.id,
+      code: this.formatTicketCode(ticket.id),
+      subject: ticket.subject,
+      content: ticket.content,
+      status: ticket.status,
+      createdAt: ticket.createdAt,
+      updatedAt: ticket.updatedAt,
+      order: ticket.order,
+    }));
+  }
+
   listForUser(userId: string) {
     return this.prisma.ticket.findMany({
       where: { userId, isDeleted: false },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  private formatTicketCode(ticketId: string) {
+    return `#${ticketId.slice(0, 8).toUpperCase()}`;
   }
 }

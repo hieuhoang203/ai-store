@@ -33,7 +33,6 @@ import { UsersModule } from './users/users.module';
         INVENTORY_PASSWORD_SECRET: Joi.string().default('local-inventory-password-secret'),
         TELEGRAM_BOT_TOKEN: Joi.string().allow('').default(''),
         TELEGRAM_MINIAPP_URL: Joi.string().uri().default('https://ai-store-o29h.vercel.app'),
-        TELEGRAM_MINIAPP_DEEP_LINK_URL: Joi.string().allow('').uri().default(''),
         ADMIN_APP_URL: Joi.string().uri().default('https://ai-store-kappa-beige.vercel.app'),
         PAYOS_CLIENT_ID: Joi.string().allow('').default(''),
         PAYOS_API_KEY: Joi.string().allow('').default(''),

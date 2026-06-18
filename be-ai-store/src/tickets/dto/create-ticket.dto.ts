@@ -39,3 +39,8 @@ export class CreateWarrantyTicketDto {
   @IsString()
   accountLabel?: string;
 }
+
+export class ListMyTicketsDto {
+  @IsString()
+  initData!: string;
+}

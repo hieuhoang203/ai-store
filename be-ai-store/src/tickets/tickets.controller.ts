@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { CreateTicketDto, CreateWarrantyTicketDto } from './dto/create-ticket.dto';
+import { CreateTicketDto, CreateWarrantyTicketDto, ListMyTicketsDto } from './dto/create-ticket.dto';
 import { TicketsService } from './tickets.service';
 
 @ApiTags('tickets')
@@ -16,6 +16,11 @@ export class TicketsController {
   @Post('warranty')
   createWarranty(@Body() dto: CreateWarrantyTicketDto) {
     return this.ticketsService.createWarrantyTicket(dto);
+  }
+
+  @Post('my')
+  listMine(@Body() dto: ListMyTicketsDto) {
+    return this.ticketsService.listMine(dto);
   }
 
   @Get('users/:userId')

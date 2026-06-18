@@ -131,6 +131,20 @@ export type ProfileSummary = {
   };
 };
 
+export type MyTicket = {
+  id: string;
+  code: string;
+  subject: string;
+  content: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  order?: {
+    id: string;
+    orderNo: string;
+  } | null;
+};
+
 export async function checkout(initData: string, items: CartItem[]) {
   const response = await api.post<CheckoutResult>("/orders/checkout", {
     initData,
@@ -171,5 +185,10 @@ export async function createWarrantyTicket(input: {
   accountLabel?: string;
 }) {
   const response = await api.post("/tickets/warranty", input);
+  return response.data;
+}
+
+export async function getMyTickets(initData: string) {
+  const response = await api.post<MyTicket[]>("/tickets/my", { initData });
   return response.data;
 }

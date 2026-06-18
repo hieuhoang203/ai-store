@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Clipboard, Package, ReceiptText, Send, ShieldCheck, X } from "lucide-react";
 import {
@@ -39,7 +39,7 @@ type WarrantyTarget = {
   warrantyDays: number;
 };
 
-export function OrdersView({ initData, initialOrderId }: { initData?: string; initialOrderId?: string | null }) {
+export function OrdersView({ initData }: { initData?: string }) {
   const [page, setPage] = useState(1);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -57,11 +57,6 @@ export function OrdersView({ initData, initialOrderId }: { initData?: string; in
     queryFn: () => getOrderDetail(initData!, selectedOrderId!),
     enabled: Boolean(initData && selectedOrderId),
   });
-
-  useEffect(() => {
-    if (!initialOrderId) return;
-    setSelectedOrderId(initialOrderId);
-  }, [initialOrderId]);
 
   async function copyValue(key: string, value?: string | null) {
     if (!value) return;

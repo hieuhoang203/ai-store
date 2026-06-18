@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import {
   InventoryStatus,
   NotificationType,
@@ -22,7 +21,6 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly telegramService: TelegramService,
-    private readonly configService: ConfigService,
   ) {}
 
   create(dto: CreateNotificationDto) {
@@ -62,24 +60,7 @@ export class NotificationsService {
 
     if (ticket.user.telegramId) {
       try {
-        const orderWebAppUrl = this.buildOrderWebAppUrl(ticket.orderId);
-        const telegramContent = this.renderTicketStatusMessage(
-          ticket.id,
-          status,
-          closeReason,
-          ticket.orderId,
-          true,
-        );
-        if (orderWebAppUrl) {
-          await this.telegramService.sendHtmlMessageWithWebAppButton(
-            ticket.user.telegramId,
-            telegramContent || content,
-            'Mở đơn hàng',
-            orderWebAppUrl,
-          );
-        } else {
-          await this.telegramService.sendHtmlMessage(ticket.user.telegramId, telegramContent || content);
-        }
+        await this.telegramService.sendMessage(ticket.user.telegramId, content);
       } catch (error) {
         this.logger.warn(
           `Cannot send ticket notification to ${ticket.user.telegramId}: ${
@@ -248,17 +229,12 @@ export class NotificationsService {
     ticketId: string,
     status: TicketStatus,
     closeReason?: string,
-    orderId?: string | null,
-    html = false,
   ) {
     const ticketCode = this.formatTicketCode(ticketId);
-    const ticketLabel = html
-      ? this.renderTicketCodeLink(ticketCode, orderId)
-      : ticketCode;
 
     if (status === TicketStatus.IN_PROGRESS) {
       return [
-        `⚠️ Ticket: ${ticketLabel}`,
+        `⚠️ Ticket: ${ticketCode}`,
         '',
         'Chúng tôi thành thật xin lỗi về sự cố bạn gặp phải.',
         '',
@@ -270,7 +246,7 @@ export class NotificationsService {
 
     if (status === TicketStatus.RESOLVED) {
       return [
-        `✅ Ticket: ${ticketLabel}`,
+        `✅ Ticket: ${ticketCode}`,
         '',
         'Sự cố đã được xử lý thành công.',
         '',
@@ -282,12 +258,10 @@ export class NotificationsService {
 
     if (status === TicketStatus.CLOSED) {
       return [
-        `🔒 Ticket: ${ticketLabel} đã được đóng.`,
+        `🔒 Ticket: ${ticketCode} đã được đóng.`,
         '',
         '📝 Lý do:',
-        html
-          ? this.escapeHtml(closeReason?.trim() || 'Ticket đã được đóng bởi đội hỗ trợ.')
-          : closeReason?.trim() || 'Ticket đã được đóng bởi đội hỗ trợ.',
+        closeReason?.trim() || 'Ticket đã được đóng bởi đội hỗ trợ.',
         '',
         'Nếu cần hỗ trợ thêm, vui lòng tạo ticket mới.',
         '',
@@ -300,52 +274,5 @@ export class NotificationsService {
 
   private formatTicketCode(ticketId: string) {
     return `#${ticketId.slice(0, 8).toUpperCase()}`;
-  }
-
-  private renderTicketCodeLink(ticketCode: string, orderId?: string | null) {
-    const url = this.buildOrderDeepLink(orderId) || this.buildOrderWebAppUrl(orderId);
-    if (!url) return this.escapeHtml(ticketCode);
-
-    return `<a href="${this.escapeHtml(url)}">${this.escapeHtml(ticketCode)}</a>`;
-  }
-
-  private buildOrderDeepLink(orderId?: string | null) {
-    if (!orderId) return null;
-
-    const deepLinkUrl = this.configService.get<string>('TELEGRAM_MINIAPP_DEEP_LINK_URL');
-    if (!deepLinkUrl) return null;
-
-    try {
-      const url = new URL(deepLinkUrl);
-      url.searchParams.set('startapp', `order_${orderId}`);
-      return url.toString();
-    } catch {
-      return null;
-    }
-  }
-
-  private buildOrderWebAppUrl(orderId?: string | null) {
-    if (!orderId) return null;
-
-    const miniAppUrl = this.configService.get<string>('TELEGRAM_MINIAPP_URL');
-    if (!miniAppUrl) return null;
-
-    try {
-      const url = new URL(miniAppUrl);
-      url.searchParams.set('tab', 'orders');
-      url.searchParams.set('orderId', orderId);
-      return url.toString();
-    } catch {
-      return null;
-    }
-  }
-
-  private escapeHtml(value: string) {
-    return value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
   }
 }

@@ -474,54 +474,60 @@ function WarrantyModal({
   const canSubmit = reason.trim().length >= 5 && !submitting;
 
   return (
-    <div className="fixed inset-0 z-[2147483647] flex items-end justify-center bg-black/70 px-4 pb-[calc(16px+env(safe-area-inset-bottom))] pt-8 backdrop-blur-sm">
-      <section className="mini-rise w-full max-w-md rounded-2xl border border-white/10 bg-[#071008] p-4 shadow-2xl shadow-black/60">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">
-              {text.warranty} ({target.remainingDays}/{target.warrantyDays})
-            </p>
-            <h3 className="mt-1 break-words text-lg font-bold text-white">{target.orderNo}</h3>
-            <p className="mt-1 line-clamp-2 text-sm font-semibold text-zinc-400">
-              {target.productName} - {target.variantName}
-            </p>
+    <div className="fixed inset-0 z-[2147483647] flex items-center justify-center overflow-y-auto bg-black/70 px-4 py-[max(24px,env(safe-area-inset-top))] backdrop-blur-sm">
+      <section className="mini-rise flex max-h-[min(82dvh,560px)] w-full max-w-md flex-col rounded-2xl border border-white/10 bg-[#071008] shadow-2xl shadow-black/60">
+        <div className="shrink-0 border-b border-white/10 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">
+                {text.warranty} ({target.remainingDays}/{target.warrantyDays})
+              </p>
+              <h3 className="mt-1 break-words text-lg font-bold text-white">{target.orderNo}</h3>
+              <p className="mt-1 line-clamp-2 text-sm font-semibold text-zinc-400">
+                {target.productName} - {target.variantName}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.045] text-zinc-200"
+              aria-label="Đóng"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.045] text-zinc-200"
-            aria-label="Đóng"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </div>
 
-        <label className="block text-sm font-bold text-white" htmlFor="warranty-reason">
-          {text.warrantyReason}
-        </label>
-        <textarea
-          id="warranty-reason"
-          value={reason}
-          onChange={(event) => onReasonChange(event.target.value)}
-          placeholder={text.warrantyPlaceholder}
-          rows={5}
-          className="mt-2 w-full resize-none rounded-lg border border-white/10 bg-black/35 p-3 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-600 focus:border-emerald-300/50"
-        />
-        {message ? (
-          <p className="mt-2 rounded-lg border border-red-400/25 bg-red-400/10 p-2 text-sm font-semibold text-red-100">
-            {message}
-          </p>
-        ) : null}
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <label className="block text-sm font-bold text-white" htmlFor="warranty-reason">
+            {text.warrantyReason}
+          </label>
+          <textarea
+            id="warranty-reason"
+            value={reason}
+            onChange={(event) => onReasonChange(event.target.value)}
+            placeholder={text.warrantyPlaceholder}
+            rows={5}
+            className="mt-2 min-h-32 w-full resize-none rounded-lg border border-white/10 bg-black/35 p-3 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-600 focus:border-emerald-300/50"
+          />
+          {message ? (
+            <p className="mt-2 rounded-lg border border-red-400/25 bg-red-400/10 p-2 text-sm font-semibold text-red-100">
+              {message}
+            </p>
+          ) : null}
+        </div>
 
-        <button
-          type="button"
-          disabled={!canSubmit}
-          onClick={onSubmit}
-          className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-300 text-sm font-bold text-black transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Send className="h-4 w-4" />
-          {submitting ? "Đang gửi..." : "Gửi yêu cầu bảo hành"}
-        </button>
+        <div className="shrink-0 border-t border-white/10 p-4">
+          <button
+            type="button"
+            disabled={!canSubmit}
+            onClick={onSubmit}
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-300 text-sm font-bold text-black transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Send className="h-4 w-4" />
+            {submitting ? "Đang gửi..." : "Gửi yêu cầu bảo hành"}
+          </button>
+        </div>
       </section>
     </div>
   );

@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Clipboard, Package, ReceiptText, ShieldCheck } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Clipboard, Package, ReceiptText, Send, ShieldCheck, X } from "lucide-react";
 import {
+  createWarrantyTicket,
   getOrderDetail,
   getOrderHistory,
   type OrderDetail,
@@ -21,12 +22,31 @@ const text = {
   emptyText: "Các đơn đã thanh toán sẽ hiển thị tại đây.",
   back: "Quay lại danh sách đơn",
   copied: "Đã copy",
+  warranty: "Bảo hành",
+  warrantyReason: "Lý do bảo hành",
+  warrantyPlaceholder: "Mô tả lỗi bạn gặp phải để admin kiểm tra và hỗ trợ.",
+  warrantyCreated: "Đã gửi yêu cầu bảo hành",
+  warrantyFailed: "Không gửi được yêu cầu bảo hành",
+};
+
+type WarrantyTarget = {
+  orderId: string;
+  orderNo: string;
+  productName: string;
+  variantName: string;
+  accountLabel: string;
+  remainingDays: number;
+  warrantyDays: number;
 };
 
 export function OrdersView({ initData }: { initData?: string }) {
   const [page, setPage] = useState(1);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [warrantyTarget, setWarrantyTarget] = useState<WarrantyTarget | null>(null);
+  const [warrantyReason, setWarrantyReason] = useState("");
+  const [submittingWarranty, setSubmittingWarranty] = useState(false);
+  const [warrantyMessage, setWarrantyMessage] = useState<string | null>(null);
   const ordersQuery = useQuery({
     queryKey: ["order-history", initData, page],
     queryFn: () => getOrderHistory(initData!, page, PAGE_SIZE),
@@ -45,19 +65,64 @@ export function OrdersView({ initData }: { initData?: string }) {
     window.setTimeout(() => setCopiedKey(null), 1200);
   }
 
+  function openWarranty(target: WarrantyTarget) {
+    setWarrantyTarget(target);
+    setWarrantyReason("");
+    setWarrantyMessage(null);
+  }
+
+  async function submitWarranty() {
+    if (!initData || !warrantyTarget || warrantyReason.trim().length < 5) return;
+
+    setSubmittingWarranty(true);
+    setWarrantyMessage(null);
+    try {
+      await createWarrantyTicket({
+        initData,
+        orderId: warrantyTarget.orderId,
+        reason: warrantyReason,
+        productName: warrantyTarget.productName,
+        variantName: warrantyTarget.variantName,
+        accountLabel: warrantyTarget.accountLabel,
+      });
+      setWarrantyMessage(text.warrantyCreated);
+      setWarrantyTarget(null);
+      setWarrantyReason("");
+    } catch (error) {
+      setWarrantyMessage(error instanceof Error ? error.message : text.warrantyFailed);
+    } finally {
+      setSubmittingWarranty(false);
+    }
+  }
+
   if (!initData) {
     return <EmptyState title={text.title} text={text.telegramRequired} />;
   }
 
   if (selectedOrderId) {
     return (
-      <OrderDetailPanel
-        order={detailQuery.data}
-        loading={detailQuery.isLoading}
-        copiedKey={copiedKey}
-        onCopy={copyValue}
-        onBack={() => setSelectedOrderId(null)}
-      />
+      <>
+        <OrderDetailPanel
+          order={detailQuery.data}
+          loading={detailQuery.isLoading}
+          copiedKey={copiedKey}
+          onCopy={copyValue}
+          warrantyMessage={warrantyMessage}
+          onWarranty={openWarranty}
+          onBack={() => setSelectedOrderId(null)}
+        />
+        {warrantyTarget ? (
+          <WarrantyModal
+            target={warrantyTarget}
+            reason={warrantyReason}
+            message={warrantyMessage}
+            submitting={submittingWarranty}
+            onReasonChange={setWarrantyReason}
+            onSubmit={submitWarranty}
+            onClose={() => setWarrantyTarget(null)}
+          />
+        ) : null}
+      </>
     );
   }
 
@@ -194,12 +259,16 @@ function OrderDetailPanel({
   loading,
   copiedKey,
   onCopy,
+  warrantyMessage,
+  onWarranty,
   onBack,
 }: {
   order?: OrderDetail;
   loading: boolean;
   copiedKey: string | null;
   onCopy: (key: string, value?: string | null) => void;
+  warrantyMessage: string | null;
+  onWarranty: (target: WarrantyTarget) => void;
   onBack: () => void;
 }) {
   if (loading || !order) {
@@ -214,6 +283,12 @@ function OrderDetailPanel({
   return (
     <section className="mini-fade space-y-3">
       <BackButton onBack={onBack} />
+
+      {warrantyMessage ? (
+        <div className="rounded-xl border border-emerald-300/25 bg-emerald-300/10 p-3 text-sm font-bold text-emerald-100">
+          {warrantyMessage}
+        </div>
+      ) : null}
 
       <div className="rounded-2xl border border-emerald-300/25 bg-emerald-300/10 p-4 shadow-xl shadow-black/20">
         <div className="flex items-start gap-3">
@@ -280,6 +355,13 @@ function OrderDetailPanel({
                       onCopy={() => onCopy(`${productIndex}-${accountIndex}-2fa`, account.twoFactor)}
                     />
                   ) : null}
+                  <WarrantyButton
+                    order={order}
+                    product={product}
+                    accountLabel={account.username || account.email || `Tài khoản #${accountIndex + 1}`}
+                    deliveredAt={account.deliveredAt || order.createdAt}
+                    onWarranty={onWarranty}
+                  />
                 </div>
               ))
             ) : (
@@ -332,11 +414,135 @@ function CopyRow({ label, value, copied, onCopy }: { label: string; value: strin
   );
 }
 
+function WarrantyButton({
+  order,
+  product,
+  accountLabel,
+  deliveredAt,
+  onWarranty,
+}: {
+  order: OrderDetail;
+  product: OrderDetail["products"][number];
+  accountLabel: string;
+  deliveredAt: string;
+  onWarranty: (target: WarrantyTarget) => void;
+}) {
+  const warrantyDays = product.warrantyDays || 0;
+  const remainingDays = getRemainingWarrantyDays(deliveredAt, warrantyDays);
+
+  if (!remainingDays) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        onWarranty({
+          orderId: order.id,
+          orderNo: order.orderNo,
+          productName: product.productName,
+          variantName: product.variantName,
+          accountLabel,
+          remainingDays,
+          warrantyDays,
+        })
+      }
+      className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-emerald-300/25 bg-emerald-300/10 px-3 text-sm font-bold text-emerald-100 transition hover:bg-emerald-300/20"
+    >
+      <ShieldCheck className="h-4 w-4" />
+      {text.warranty} ({remainingDays}/{warrantyDays})
+    </button>
+  );
+}
+
+function WarrantyModal({
+  target,
+  reason,
+  message,
+  submitting,
+  onReasonChange,
+  onSubmit,
+  onClose,
+}: {
+  target: WarrantyTarget;
+  reason: string;
+  message: string | null;
+  submitting: boolean;
+  onReasonChange: (value: string) => void;
+  onSubmit: () => void;
+  onClose: () => void;
+}) {
+  const canSubmit = reason.trim().length >= 5 && !submitting;
+
+  return (
+    <div className="fixed inset-0 z-[2147483647] flex items-end justify-center bg-black/70 px-4 pb-[calc(16px+env(safe-area-inset-bottom))] pt-8 backdrop-blur-sm">
+      <section className="mini-rise w-full max-w-md rounded-2xl border border-white/10 bg-[#071008] p-4 shadow-2xl shadow-black/60">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">
+              {text.warranty} ({target.remainingDays}/{target.warrantyDays})
+            </p>
+            <h3 className="mt-1 break-words text-lg font-bold text-white">{target.orderNo}</h3>
+            <p className="mt-1 line-clamp-2 text-sm font-semibold text-zinc-400">
+              {target.productName} - {target.variantName}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.045] text-zinc-200"
+            aria-label="Đóng"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <label className="block text-sm font-bold text-white" htmlFor="warranty-reason">
+          {text.warrantyReason}
+        </label>
+        <textarea
+          id="warranty-reason"
+          value={reason}
+          onChange={(event) => onReasonChange(event.target.value)}
+          placeholder={text.warrantyPlaceholder}
+          rows={5}
+          className="mt-2 w-full resize-none rounded-lg border border-white/10 bg-black/35 p-3 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-600 focus:border-emerald-300/50"
+        />
+        {message ? (
+          <p className="mt-2 rounded-lg border border-red-400/25 bg-red-400/10 p-2 text-sm font-semibold text-red-100">
+            {message}
+          </p>
+        ) : null}
+
+        <button
+          type="button"
+          disabled={!canSubmit}
+          onClick={onSubmit}
+          className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-300 text-sm font-bold text-black transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Send className="h-4 w-4" />
+          {submitting ? "Đang gửi..." : "Gửi yêu cầu bảo hành"}
+        </button>
+      </section>
+    </div>
+  );
+}
+
 function formatStatus(status: string, paymentStatus: string) {
   if (status === "DELIVERED") return "Hoàn thành";
   if (paymentStatus === "PAID") return "Đã thanh toán";
   if (paymentStatus === "FAILED" || status === "CANCELLED") return "Đã hủy";
   return "Chờ thanh toán";
+}
+
+function getRemainingWarrantyDays(deliveredAt: string, warrantyDays: number) {
+  if (!warrantyDays || warrantyDays <= 0) return null;
+
+  const deliveredTime = new Date(deliveredAt).getTime();
+  if (!Number.isFinite(deliveredTime)) return null;
+
+  const expiresAt = deliveredTime + warrantyDays * 24 * 60 * 60 * 1000;
+  const remainingDays = Math.ceil((expiresAt - Date.now()) / (24 * 60 * 60 * 1000));
+  return remainingDays > 0 ? remainingDays : null;
 }
 
 function formatMoney(value: string | number) {

@@ -161,3 +161,15 @@ export async function getProfileSummary(initData: string) {
   const response = await api.post<ProfileSummary>("/orders/profile-summary", { initData });
   return response.data;
 }
+
+export async function createWarrantyTicket(input: {
+  initData: string;
+  orderId: string;
+  reason: string;
+  productName?: string;
+  variantName?: string;
+  accountLabel?: string;
+}) {
+  const response = await api.post("/tickets/warranty", input);
+  return response.data;
+}

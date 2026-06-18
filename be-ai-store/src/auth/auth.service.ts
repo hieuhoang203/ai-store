@@ -11,6 +11,13 @@ import {
 } from '../../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service';
 
+export type TelegramProfileInput = {
+  id: bigint | number | string;
+  username?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+};
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -39,21 +46,31 @@ export class AuthService {
       throw new UnauthorizedException('Telegram user payload is missing');
     }
 
+    return this.upsertTelegramUserProfile({
+      id: telegramUser.id,
+      username: this.toOptionalString(telegramUser.username),
+      firstName: this.toOptionalString(telegramUser.firstName),
+      lastName: this.toOptionalString(telegramUser.lastName),
+    });
+  }
+
+  async upsertTelegramUserProfile(profile: TelegramProfileInput) {
+    const telegramId = BigInt(profile.id);
+    const username = this.normalizeProfileValue(profile.username);
+    const fullName = this.buildFullName(profile.firstName, profile.lastName);
+
     return this.prisma.user.upsert({
-      where: { telegramId: BigInt(telegramUser.id) },
+      where: { telegramId },
       create: {
-        telegramId: BigInt(telegramUser.id),
-        username: telegramUser.username,
-        fullName: [telegramUser.firstName, telegramUser.lastName]
-          .filter(Boolean)
-          .join(' '),
+        telegramId,
+        username,
+        fullName,
         status: UserStatus.ACTIVE,
       },
       update: {
-        username: telegramUser.username,
-        fullName: [telegramUser.firstName, telegramUser.lastName]
-          .filter(Boolean)
-          .join(' '),
+        ...(username ? { username } : {}),
+        ...(fullName ? { fullName } : {}),
+        status: UserStatus.ACTIVE,
       },
     });
   }
@@ -128,5 +145,23 @@ export class AuthService {
       tokenType: 'Bearer',
       expiresIn: '15m',
     };
+  }
+
+  private normalizeProfileValue(value?: string | null) {
+    const normalized = value?.trim();
+    return normalized || undefined;
+  }
+
+  private toOptionalString(value: unknown) {
+    return typeof value === 'string' ? value : undefined;
+  }
+
+  private buildFullName(firstName?: string | null, lastName?: string | null) {
+    const fullName = [firstName, lastName]
+      .map((value) => this.normalizeProfileValue(value))
+      .filter(Boolean)
+      .join(' ');
+
+    return fullName || undefined;
   }
 }

@@ -16,6 +16,7 @@ import { CartView } from "./cart-view";
 import { CategoryView } from "./category-view";
 import { EmptyState } from "./empty-state";
 import type { TabKey, ToastState } from "./mini-app-types";
+import { OrdersView } from "./orders-view";
 import { ProductGrid } from "./product-grid";
 import { ToastBanner } from "./toast-banner";
 import { TopSummary } from "./top-summary";
@@ -28,8 +29,6 @@ const text = {
   addedToCart: "\u0110\u00e3 th\u00eam v\u00e0o gi\u1ecf h\u00e0ng",
   outOfStock: "S\u1ea3n ph\u1ea9m n\u00e0y \u0111\u00e3 h\u1ebft h\u00e0ng",
   stockLimitReached: "\u0110\u00e3 \u0111\u1ea1t s\u1ed1 l\u01b0\u1ee3ng t\u1ed1i \u0111a trong kho",
-  ordersTitle: "\u0110\u01a1n h\u00e0ng",
-  ordersText: "C\u00e1c \u0111\u01a1n \u0111\u00e3 thanh to\u00e1n v\u00e0 tr\u1ea1ng th\u00e1i giao h\u00e0ng s\u1ebd \u0111\u01b0\u1ee3c \u0111\u1ed3ng b\u1ed9 t\u1ea1i \u0111\u00e2y.",
   profileTitle: "T\u00e0i kho\u1ea3n",
   profileText: "Th\u00f4ng tin Telegram, l\u1ecbch s\u1eed mua h\u00e0ng v\u00e0 quy\u1ec1n h\u1ed7 tr\u1ee3 s\u1ebd hi\u1ec3n th\u1ecb t\u1ea1i \u0111\u00e2y.",
 };
@@ -178,7 +177,7 @@ export function MiniAppShell() {
         ) : null}
 
         {activeTab === "orders" ? (
-          <EmptyState title={text.ordersTitle} text={text.ordersText} />
+          <OrdersView initData={initData} />
         ) : null}
         {activeTab === "profile" ? (
           <EmptyState title={text.profileTitle} text={text.profileText} />

@@ -84,46 +84,62 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  async sendHtmlMessage(telegramId: bigint | number | string, message: string) {
+    if (!this.bot) return;
+    for (const chunk of this.chunkMessage(message)) {
+      await this.bot.telegram.sendMessage(String(telegramId), chunk, { parse_mode: 'HTML' });
+    }
+  }
+
   private registerCommands(bot: Telegraf) {
     bot.start(async (context) => {
+      await this.syncTelegramProfile(context.from);
       await this.replyStartMenu(context);
     });
 
     bot.action('start', async (context) => {
       await context.answerCbQuery().catch(() => undefined);
+      await this.syncTelegramProfile(context.from);
       await this.replyStartMenu(context);
     });
 
     bot.action('support', async (context) => {
       await context.answerCbQuery().catch(() => undefined);
+      await this.syncTelegramProfile(context.from);
       await context.reply('Vui lòng mô tả vấn đề của bạn. Đội hỗ trợ sẽ phản hồi sớm nhất.');
     });
 
     bot.action('orders', async (context) => {
       await context.answerCbQuery().catch(() => undefined);
+      await this.syncTelegramProfile(context.from);
       await this.replyOrderList(context);
     });
 
     bot.action('orders:back', async (context) => {
       await context.answerCbQuery().catch(() => undefined);
+      await this.syncTelegramProfile(context.from);
       await this.replyOrderList(context);
     });
 
     bot.action(/^order:(.+)$/, async (context) => {
       await context.answerCbQuery().catch(() => undefined);
+      await this.syncTelegramProfile(context.from);
       const orderId = context.match[1];
       await this.replyOrderDetail(context, orderId);
     });
 
     bot.action(/^warranty:(.+)$/, async (context) => {
+      await this.syncTelegramProfile(context.from);
       await context.answerCbQuery('Vui lòng nhắn mô tả lỗi, đội hỗ trợ sẽ phản hồi sớm.').catch(() => undefined);
     });
 
     bot.command('support', async (context) => {
+      await this.syncTelegramProfile(context.from);
       await context.reply('Vui lòng mô tả vấn đề của bạn. Đội hỗ trợ sẽ phản hồi sớm nhất.');
     });
 
     bot.command('admin', async (context) => {
+      await this.syncTelegramProfile(context.from);
       const telegramId = BigInt(context.from.id);
       const user = await this.prisma.user.findUnique({
         where: { telegramId },
@@ -145,6 +161,22 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       const token = await this.authService.createAdminLoginToken(user.id);
       const adminUrl = this.configService.getOrThrow<string>('ADMIN_APP_URL');
       await context.reply(`${adminUrl}/auth/login?token=${token}`);
+    });
+  }
+
+  private async syncTelegramProfile(from?: {
+    id: number;
+    username?: string;
+    first_name?: string;
+    last_name?: string;
+  }) {
+    if (!from?.id) return;
+
+    await this.authService.upsertTelegramUserProfile({
+      id: from.id,
+      username: from.username,
+      firstName: from.first_name,
+      lastName: from.last_name,
     });
   }
 

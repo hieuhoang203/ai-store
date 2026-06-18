@@ -11,6 +11,7 @@ import {
 import type { Product, ProductVariant } from "@/features/products/product-service";
 import type { CartItem } from "@/store/cart-store";
 import { EmptyState } from "./empty-state";
+import { ProductDescription } from "./product-description";
 import { SectionTitle } from "./section-title";
 
 const text = {
@@ -260,7 +261,7 @@ function ProductDetail({
             <p className="mt-1 text-sm font-bold text-emerald-300">{formatPriceRange(product.variants)}</p>
           </div>
         </div>
-        {product.description ? <p className="mt-3 text-sm leading-6 text-zinc-400">{product.description}</p> : null}
+        <ProductDescription description={product.description} />
       </div>
 
       <div className="space-y-3">

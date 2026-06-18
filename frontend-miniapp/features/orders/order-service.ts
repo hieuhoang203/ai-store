@@ -55,6 +55,75 @@ export type PaymentStatusResult = {
   deliveryMessage?: string | null;
 };
 
+export type OrderHistoryItem = {
+  id: string;
+  orderNo: string;
+  status: string;
+  paymentStatus: string;
+  totalAmount: string;
+  createdAt: string;
+  quantity: number;
+  products: Array<{
+    productName: string;
+    variantName: string;
+    quantity: number;
+  }>;
+};
+
+export type OrderHistoryResult = {
+  data: OrderHistoryItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+};
+
+export type OrderDetail = {
+  id: string;
+  orderNo: string;
+  status: string;
+  paymentStatus: string;
+  totalAmount: string;
+  createdAt: string;
+  paidAt?: string | null;
+  bankName?: string | null;
+  paymentContent?: string | null;
+  warrantyDays?: number | null;
+  products: Array<{
+    productName: string;
+    variantName: string;
+    quantity: number;
+    warrantyDays?: number | null;
+    accounts: Array<{
+      email?: string | null;
+      username?: string | null;
+      password?: string | null;
+      twoFactor?: string | null;
+      deliveredAt?: string | null;
+    }>;
+  }>;
+};
+
+export type ProfileSummary = {
+  user: {
+    id: string;
+    telegramId?: string | null;
+    username?: string | null;
+    fullName?: string | null;
+  };
+  stats: {
+    orderCount: number;
+    totalSpent: string;
+  };
+  support: {
+    telegram: string;
+  };
+};
+
 export async function checkout(initData: string, items: CartItem[]) {
   const response = await api.post<CheckoutResult>("/orders/checkout", {
     initData,
@@ -68,5 +137,20 @@ export async function checkout(initData: string, items: CartItem[]) {
 
 export async function getPaymentStatus(paymentId: string) {
   const response = await api.get<PaymentStatusResult>(`/payments/${paymentId}/status`);
+  return response.data;
+}
+
+export async function getOrderHistory(initData: string, page = 1, limit = 10) {
+  const response = await api.post<OrderHistoryResult>("/orders/history", { initData, page, limit });
+  return response.data;
+}
+
+export async function getOrderDetail(initData: string, orderId: string) {
+  const response = await api.post<OrderDetail>(`/orders/${orderId}/detail`, { initData });
+  return response.data;
+}
+
+export async function getProfileSummary(initData: string) {
+  const response = await api.post<ProfileSummary>("/orders/profile-summary", { initData });
   return response.data;
 }

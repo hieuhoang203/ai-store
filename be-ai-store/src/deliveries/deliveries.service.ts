@@ -7,6 +7,7 @@ import { TelegramService } from '../telegram/telegram.service';
 import {
   DeliveryMessagePayload,
   renderDeliveryMessage,
+  renderDeliveryTelegramMessage,
 } from './delivery-message';
 
 @Injectable()
@@ -38,7 +39,9 @@ export class DeliveriesService {
       where: { id: orderId },
       include: { user: true },
     });
-    const content = await this.generateDeliveryContent(orderId);
+    const payload = await this.buildDeliveryMessagePayload(orderId);
+    const content = renderDeliveryMessage(payload);
+    const telegramContent = renderDeliveryTelegramMessage(payload);
 
     await this.prisma.delivery.updateMany({
       where: {
@@ -49,7 +52,7 @@ export class DeliveriesService {
     });
 
     if (order.user.telegramId) {
-      await this.telegramService.sendMessage(order.user.telegramId, content);
+      await this.telegramService.sendHtmlMessage(order.user.telegramId, telegramContent);
     }
 
     return content;
@@ -98,6 +101,6 @@ export class DeliveriesService {
       const months = durationDays / 30;
       return `${months} Tháng`;
     }
-    return `${durationDays} ngày`;
+    return `${durationDays} Ngày`;
   }
 }

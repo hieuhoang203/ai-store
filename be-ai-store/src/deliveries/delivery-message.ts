@@ -23,77 +23,72 @@ export type DeliveryMessagePayload = {
 };
 
 export function renderDeliveryMessage(payload: DeliveryMessagePayload) {
-  const lines = [
-    '🎉 THANH TOÁN THÀNH CÔNG',
-    '',
-    `Mã đơn hàng: ${renderValue(payload.orderCode)}`,
-    '',
-    'Cảm ơn bạn đã mua hàng tại AI Store ❤️',
-    '',
-    ...payload.products.flatMap((product, index) => renderProduct(product, index)),
-    '',
-    '📞 HỖ TRỢ & BẢO HÀNH',
-    '',
-    'Telegram:',
-    renderValue(payload.support.telegram),
-    '',
-    'Zalo:',
-    renderValue(payload.support.zalo),
-    '',
-    'Email:',
-    renderValue(payload.support.email),
-    '',
-    '⚠️ LƯU Ý',
-    '',
-    '• Vui lòng lưu lại thông tin tài khoản',
-    '• Không chia sẻ tài khoản cho người khác',
-    '• Liên hệ hỗ trợ ngay khi gặp lỗi đăng nhập',
-    '• Chính sách bảo hành áp dụng theo từng sản phẩm',
-    '',
-    'Xin cảm ơn bạn đã tin tưởng sử dụng dịch vụ ❤️',
-    '',
-    'AI Store Team',
-  ];
-
-  return lines.join('\n');
-}
-
-function renderProduct(product: DeliveryProduct, index: number) {
   return [
-    `📦 SẢN PHẨM ${index + 1}`,
+    '🎉 ĐẶT HÀNG THÀNH CÔNG',
     '',
-    `🤖 Dịch vụ: ${renderValue(product.serviceName)}`,
+    `🧾 Mã đơn: ${renderValue(payload.orderCode)}`,
     '',
-    `📅 Gói: ${renderValue(product.duration)}`,
+    '━━━━━━━━━━━━━━',
     '',
-    `🛡️ Bảo hành: ${renderWarranty(product.warrantyDays)}`,
+    ...payload.products.flatMap(renderProduct),
+    '━━━━━━━━━━━━━━',
     '',
-    ...renderAccounts(product.accounts),
+    '🛠️ Hỗ trợ:',
+    `💬 Telegram: ${renderValue(payload.support.telegram)}`,
+    `📱 Zalo: ${renderValue(payload.support.zalo)}`,
     '',
-  ];
+    '❤️ AI Store cảm ơn bạn đã tin tưởng sử dụng dịch vụ.',
+  ].join('\n');
 }
 
-function renderAccounts(accounts: DeliveryAccount[]) {
-  const normalizedAccounts = accounts.length ? accounts : [{}];
-  const showAccountTitle = normalizedAccounts.length > 1;
-
-  return normalizedAccounts.flatMap((account, index) => [
-    ...(showAccountTitle ? [`Tài khoản #${index + 1}`, ''] : []),
-    '📧 Email:',
-    renderValue(account.email),
+export function renderDeliveryTelegramMessage(payload: DeliveryMessagePayload) {
+  return [
+    '🎉 ĐẶT HÀNG THÀNH CÔNG',
     '',
-    '🔑 Password:',
-    renderValue(account.password),
-    ...(index < normalizedAccounts.length - 1 ? ['', ''] : []),
+    `🧾 Mã đơn: <code>${escapeHtml(renderValue(payload.orderCode))}</code>`,
+    '',
+    '━━━━━━━━━━━━━━',
+    '',
+    ...payload.products.flatMap(renderTelegramProduct),
+    '━━━━━━━━━━━━━━',
+    '',
+    '🛠️ Hỗ trợ:',
+    `💬 Telegram: ${escapeHtml(renderValue(payload.support.telegram))}`,
+    `📱 Zalo: ${escapeHtml(renderValue(payload.support.zalo))}`,
+    '',
+    '❤️ AI Store cảm ơn bạn đã tin tưởng sử dụng dịch vụ.',
+  ].join('\n');
+}
+
+function renderProduct(product: DeliveryProduct) {
+  const accounts = product.accounts.length ? product.accounts : [{}];
+
+  return accounts.flatMap((account) => [
+    `🤖 ${renderProductName(product)}`,
+    `📧 ${renderValue(account.email)}`,
+    `🔑 ${renderValue(account.password)}`,
+    '',
   ]);
 }
 
-function renderWarranty(warrantyDays?: number | null) {
-  if (warrantyDays === null || warrantyDays === undefined) {
-    return 'Theo chính sách sản phẩm';
+function renderTelegramProduct(product: DeliveryProduct) {
+  const accounts = product.accounts.length ? product.accounts : [{}];
+
+  return accounts.flatMap((account) => [
+    `🤖 ${escapeHtml(renderProductName(product))}`,
+    `📧 <code>${escapeHtml(renderValue(account.email))}</code>`,
+    `🔑 <code>${escapeHtml(renderValue(account.password))}</code>`,
+    '',
+  ]);
+}
+
+function renderProductName(product: DeliveryProduct) {
+  const duration = renderValue(product.duration);
+  if (duration === '-') {
+    return renderValue(product.serviceName);
   }
 
-  return `${warrantyDays} ngày`;
+  return `${renderValue(product.serviceName)} (${duration})`;
 }
 
 function renderValue(value?: string | number | null) {
@@ -102,4 +97,13 @@ function renderValue(value?: string | number | null) {
   }
 
   return String(value);
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

@@ -91,6 +91,26 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  async sendHtmlMessageWithWebAppButton(
+    telegramId: bigint | number | string,
+    message: string,
+    buttonText: string,
+    webAppUrl: string,
+  ) {
+    if (!this.bot) return;
+
+    const chunks = this.chunkMessage(message);
+    for (let index = 0; index < chunks.length; index += 1) {
+      const isLastChunk = index === chunks.length - 1;
+      await this.bot.telegram.sendMessage(String(telegramId), chunks[index], {
+        parse_mode: 'HTML',
+        ...(isLastChunk
+          ? Markup.inlineKeyboard([[Markup.button.webApp(buttonText, webAppUrl)]])
+          : {}),
+      });
+    }
+  }
+
   private registerCommands(bot: Telegraf) {
     bot.start(async (context) => {
       await this.syncTelegramProfile(context.from);

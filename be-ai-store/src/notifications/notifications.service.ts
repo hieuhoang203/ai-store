@@ -62,6 +62,7 @@ export class NotificationsService {
 
     if (ticket.user.telegramId) {
       try {
+        const orderWebAppUrl = this.buildOrderWebAppUrl(ticket.orderId);
         const telegramContent = this.renderTicketStatusMessage(
           ticket.id,
           status,
@@ -69,7 +70,16 @@ export class NotificationsService {
           ticket.orderId,
           true,
         );
-        await this.telegramService.sendHtmlMessage(ticket.user.telegramId, telegramContent || content);
+        if (orderWebAppUrl) {
+          await this.telegramService.sendHtmlMessageWithWebAppButton(
+            ticket.user.telegramId,
+            telegramContent || content,
+            'Mở đơn hàng',
+            orderWebAppUrl,
+          );
+        } else {
+          await this.telegramService.sendHtmlMessage(ticket.user.telegramId, telegramContent || content);
+        }
       } catch (error) {
         this.logger.warn(
           `Cannot send ticket notification to ${ticket.user.telegramId}: ${
@@ -293,13 +303,28 @@ export class NotificationsService {
   }
 
   private renderTicketCodeLink(ticketCode: string, orderId?: string | null) {
-    const url = this.buildOrderDeepLink(orderId);
+    const url = this.buildOrderDeepLink(orderId) || this.buildOrderWebAppUrl(orderId);
     if (!url) return this.escapeHtml(ticketCode);
 
     return `<a href="${this.escapeHtml(url)}">${this.escapeHtml(ticketCode)}</a>`;
   }
 
   private buildOrderDeepLink(orderId?: string | null) {
+    if (!orderId) return null;
+
+    const deepLinkUrl = this.configService.get<string>('TELEGRAM_MINIAPP_DEEP_LINK_URL');
+    if (!deepLinkUrl) return null;
+
+    try {
+      const url = new URL(deepLinkUrl);
+      url.searchParams.set('startapp', `order_${orderId}`);
+      return url.toString();
+    } catch {
+      return null;
+    }
+  }
+
+  private buildOrderWebAppUrl(orderId?: string | null) {
     if (!orderId) return null;
 
     const miniAppUrl = this.configService.get<string>('TELEGRAM_MINIAPP_URL');

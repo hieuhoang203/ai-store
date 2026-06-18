@@ -63,15 +63,15 @@ export function MiniAppShell() {
   );
 
   useEffect(() => {
-    const launchTarget = readMiniAppLaunchTarget();
+    const launchTarget = readMiniAppLaunchTarget(initData);
     if (!launchTarget.orderId) return;
 
     setInitialOrderId(launchTarget.orderId);
     setActiveTab("orders");
-  }, []);
+  }, [initData]);
 
   useEffect(() => {
-    const launchTarget = readMiniAppLaunchTarget();
+    const launchTarget = readMiniAppLaunchTarget(initData);
     if (launchTarget.orderId) return;
 
     const storedPaymentResult = window.sessionStorage.getItem(PAYMENT_RESULT_STORAGE_KEY);
@@ -83,7 +83,7 @@ export function MiniAppShell() {
     } catch {
       window.sessionStorage.removeItem(PAYMENT_RESULT_STORAGE_KEY);
     }
-  }, []);
+  }, [initData]);
 
   useEffect(() => {
     const paymentId = paymentStatus?.payment.id;
@@ -203,15 +203,32 @@ export function MiniAppShell() {
   );
 }
 
-function readMiniAppLaunchTarget() {
+function readMiniAppLaunchTarget(initData?: string) {
   if (typeof window === "undefined") return { orderId: "" };
 
   const searchParams = new URLSearchParams(window.location.search);
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const tab = searchParams.get("tab") || hashParams.get("tab");
   const orderId = searchParams.get("orderId") || hashParams.get("orderId") || "";
+  const startParam = readStartParam(initData);
+  const startOrderId = parseStartOrderId(startParam);
 
   return {
-    orderId: tab === "orders" ? orderId : "",
+    orderId: tab === "orders" ? orderId : startOrderId,
   };
+}
+
+function readStartParam(initData?: string) {
+  if (!initData) return "";
+
+  try {
+    return new URLSearchParams(initData).get("start_param") || "";
+  } catch {
+    return "";
+  }
+}
+
+function parseStartOrderId(startParam: string) {
+  if (!startParam.startsWith("order_")) return "";
+  return startParam.replace(/^order_/, "");
 }

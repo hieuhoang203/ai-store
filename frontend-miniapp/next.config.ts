@@ -11,7 +11,7 @@ const nextConfig: NextConfig = {
     ],
   },
   async rewrites() {
-    const backendUrl = process.env.BACKEND_INTERNAL_URL || "http://localhost:8903";
+    const backendUrl = process.env.BACKEND_INTERNAL_URL || "https://ai-store-lnin.onrender.com";
 
     return [
       {

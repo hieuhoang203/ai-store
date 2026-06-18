@@ -12,11 +12,19 @@ describe('stock notification messages', () => {
       quantity: 3,
     });
 
-    expect(message).toContain('🚀 HÀNG MỚI ĐÃ CẬP BẾN TẠI AI STORE');
-    expect(message).toContain('🤖 Dịch vụ: Cursor Pro');
-    expect(message).toContain('AI Coding');
-    expect(message).toContain('1 Tháng');
-    expect(message).toContain('3 tài khoản');
+    expect(message).toBe([
+      '🚀 HÀNG MỚI VỀ KHO',
+      '',
+      '🤖 Cursor Pro',
+      '📂 AI Coding',
+      '📦 1 Tháng',
+      '',
+      '➕ Vừa cập nhật: 3 tài khoản',
+      '',
+      '✅ Đã sẵn sàng để đặt mua.',
+      '',
+      '🛒 Truy cập AI Store để xem chi tiết.',
+    ].join('\n'));
   });
 
   it('renders out-of-stock notification', () => {
@@ -26,10 +34,16 @@ describe('stock notification messages', () => {
       variantName: '1 Tháng',
     });
 
-    expect(message).toContain('📢 THÔNG BÁO HẾT HÀNG');
-    expect(message).toContain('🤖 Dịch vụ: Claude Pro');
-    expect(message).toContain('AI Chat');
-    expect(message).toContain('1 Tháng');
-    expect(message).toContain('AI Store Team');
+    expect(message).toBe([
+      '📢 HẾT HÀNG',
+      '',
+      '🤖 Claude Pro',
+      '📂 AI Chat',
+      '📦 1 Tháng',
+      '',
+      '🔥 Toàn bộ tài khoản đã được bán hết.',
+      '',
+      '⏳ Chúng tôi đang bổ sung thêm hàng và sẽ cập nhật sớm nhất.',
+    ].join('\n'));
   });
 });

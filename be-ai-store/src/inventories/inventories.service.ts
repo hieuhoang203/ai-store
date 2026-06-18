@@ -212,15 +212,15 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
   }
 
   async announceOutOfStockIfNeeded(variantId: string) {
-    const availableCount = await this.prisma.inventory.count({
+    const purchasableOrPendingCount = await this.prisma.inventory.count({
       where: {
         variantId,
-        status: InventoryStatus.AVAILABLE,
+        status: { in: [InventoryStatus.AVAILABLE, InventoryStatus.RESERVED] },
         isDeleted: false,
       },
     });
 
-    if (availableCount === 0) {
+    if (purchasableOrPendingCount === 0) {
       await this.notificationsService.announceVariantOutOfStock(variantId);
     }
   }

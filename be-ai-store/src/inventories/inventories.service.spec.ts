@@ -123,4 +123,29 @@ describe('InventoriesService reservation', () => {
     expect(releasedCount).toBe(0);
     expect(prisma.inventory.updateMany).not.toHaveBeenCalled();
   });
+
+  it('does not announce out of stock while inventory is reserved but unpaid', async () => {
+    prisma.inventory.count.mockResolvedValue(1);
+    const service = new InventoriesService(prisma as any, passwordService as any, notificationsService as any);
+
+    await service.announceOutOfStockIfNeeded('variant-1');
+
+    expect(prisma.inventory.count).toHaveBeenCalledWith({
+      where: {
+        variantId: 'variant-1',
+        status: { in: [InventoryStatus.AVAILABLE, InventoryStatus.RESERVED] },
+        isDeleted: false,
+      },
+    });
+    expect(notificationsService.announceVariantOutOfStock).not.toHaveBeenCalled();
+  });
+
+  it('announces out of stock only when no available or reserved inventory remains', async () => {
+    prisma.inventory.count.mockResolvedValue(0);
+    const service = new InventoriesService(prisma as any, passwordService as any, notificationsService as any);
+
+    await service.announceOutOfStockIfNeeded('variant-1');
+
+    expect(notificationsService.announceVariantOutOfStock).toHaveBeenCalledWith('variant-1');
+  });
 });

@@ -52,7 +52,7 @@ export class NotificationsService {
     const product = this.toStockNotificationProduct(inventory.variant);
     const content = renderNewStockNotification({ ...product, quantity });
     await this.broadcast({
-      title: 'Hàng mới đã cập bến tại AI Store',
+      title: 'Hàng mới về kho',
       content,
       type: NotificationType.SYSTEM,
     });
@@ -74,7 +74,7 @@ export class NotificationsService {
     });
 
     await this.broadcast({
-      title: 'AI Store vừa thêm sản phẩm mới',
+      title: 'Hàng mới về kho',
       content,
       type: NotificationType.SYSTEM,
     });
@@ -95,7 +95,7 @@ export class NotificationsService {
     });
 
     await this.broadcast({
-      title: 'AI Store vừa thêm danh mục mới',
+      title: 'Hàng mới về kho',
       content,
       type: NotificationType.SYSTEM,
     });
@@ -110,7 +110,7 @@ export class NotificationsService {
           select: {
             inventories: {
               where: {
-                status: InventoryStatus.AVAILABLE,
+                status: { in: [InventoryStatus.AVAILABLE, InventoryStatus.RESERVED] },
                 isDeleted: false,
               },
             },
@@ -125,7 +125,7 @@ export class NotificationsService {
 
     const content = renderOutOfStockNotification(this.toStockNotificationProduct(variant));
     await this.broadcast({
-      title: 'Thông báo hết hàng',
+      title: 'Hết hàng',
       content,
       type: NotificationType.SYSTEM,
     });

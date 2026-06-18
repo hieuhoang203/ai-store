@@ -254,6 +254,11 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       data: { status: OrderStatus.DELIVERED },
     });
     await this.deliveriesService.sendOrderDeliveryMessage(payment.orderId);
+    await Promise.all(
+      Array.from(new Set(payment.order.items.map((item) => item.variantId))).map((variantId) =>
+        this.inventoriesService.announceOutOfStockIfNeeded(variantId),
+      ),
+    );
 
     return payment;
   }

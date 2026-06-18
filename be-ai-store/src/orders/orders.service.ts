@@ -106,10 +106,6 @@ export class OrdersService {
       throw error;
     }
 
-    await Promise.all(
-      requestedItems.map((item) => this.inventoriesService.announceOutOfStockIfNeeded(item.variantId)),
-    );
-
     return { order, payment: this.presentPayment(payment) };
   }
 

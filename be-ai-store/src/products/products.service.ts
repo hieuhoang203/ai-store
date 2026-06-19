@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { RedisService } from '../redis/redis.service';
 import { ProductsRepository } from './products.repository';
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly productsRepository: ProductsRepository) {}
+  constructor(
+    private readonly productsRepository: ProductsRepository,
+    private readonly redisService: RedisService,
+  ) {}
 
   async listPublicProducts() {
     const products = await this.productsRepository.findActiveProducts();
@@ -11,13 +15,23 @@ export class ProductsService {
   }
 
   async listActiveCategories() {
+    const CACHE_KEY = 'ai-store:active-categories';
+
+    const cached = await this.redisService.client.get(CACHE_KEY);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+
     const categories = await this.productsRepository.findActiveCategories();
-    return categories.map((category) => ({
+    const result = categories.map((category) => ({
       id: category.id,
       name: category.name,
       icon: category.icon,
       productCount: category._count.products,
     }));
+
+    await this.redisService.client.set(CACHE_KEY, JSON.stringify(result), 'EX', 3600);
+    return result;
   }
 
   async listPublicProductsByCategory(categoryId: string) {

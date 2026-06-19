@@ -6,12 +6,14 @@ import { InventoryPasswordService } from '../../inventories/inventory-password.s
 import { NotificationsService } from '../../notifications/notifications.service';
 import { ADMIN_ENTITIES, ADMIN_ENTITY_MAP } from '../models/admin-entity.model';
 import {
+
   AdminEntityConfig,
   AdminEntitySummary,
   AdminFieldConfig,
   AdminListQuery,
 } from '../interfaces/admin-crud.interface';
 import { AdminRepository } from '../repositories/admin.repository';
+import { RedisService } from '../../redis/redis.service';
 
 @Injectable()
 export class AdminService {
@@ -20,6 +22,7 @@ export class AdminService {
     private readonly prisma: PrismaService,
     private readonly inventoryPasswordService: InventoryPasswordService,
     private readonly notificationsService: NotificationsService,
+    private readonly redisService: RedisService,
   ) {}
 
   async getEntities(): Promise<AdminEntitySummary[]> {
@@ -73,6 +76,7 @@ export class AdminService {
     }
     await this.announceCreatedEntity(entityKey, record);
     await this.auditCouponChange(entityKey, AuditAction.COUPON_CREATE, null, record);
+    await this.invalidateCategoryCache(entityKey);
 
     const serialized = this.serializeRecord(config, record);
     this.decryptInventoryPassword(entityKey, serialized);
@@ -100,6 +104,7 @@ export class AdminService {
       couponPreviousRecord,
       record,
     );
+    await this.invalidateCategoryCache(entityKey);
 
     const serialized = this.serializeRecord(config, record);
     this.decryptInventoryPassword(entityKey, serialized);
@@ -111,6 +116,7 @@ export class AdminService {
     const previousRecord = entityKey === 'coupons' ? await this.repository.detail(config, recordId) : null;
     const removed = await this.repository.remove(config, recordId);
     await this.auditCouponChange(entityKey, AuditAction.COUPON_DELETE, previousRecord, removed);
+    await this.invalidateCategoryCache(entityKey);
     return this.serializeRecord(config, removed);
   }
 
@@ -447,5 +453,11 @@ export class AdminService {
       nextStatus as TicketStatus,
       closeReason,
     );
+  }
+
+  private async invalidateCategoryCache(entityKey: string) {
+    if (entityKey === 'categories' || entityKey === 'products') {
+      await this.redisService.client.del('ai-store:active-categories');
+    }
   }
 }

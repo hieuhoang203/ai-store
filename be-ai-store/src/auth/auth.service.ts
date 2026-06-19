@@ -136,10 +136,8 @@ export class AuthService {
   }
 
   private issueTokens(userId: string, roles: RoleName[], expiresIn: string = '15m') {
-    const accessToken = this.jwtService.sign(
-      { sub: userId, roles },
-      { expiresIn },
-    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const accessToken = this.jwtService.sign({ sub: userId, roles }, { expiresIn } as any);
 
     return {
       accessToken,

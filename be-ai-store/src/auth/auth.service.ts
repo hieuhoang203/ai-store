@@ -28,8 +28,8 @@ export class AuthService {
 
   async loginWithTelegramInitData(initData: string) {
     const user = await this.getOrCreateTelegramUser(initData);
-
-    return this.issueTokens(user.id, [RoleName.CUSTOMER]);
+    // Mini App dùng token ngắn hạn 15 phút
+    return this.issueTokens(user.id, [RoleName.CUSTOMER], '15m');
   }
 
   async getOrCreateTelegramUser(initData: string) {
@@ -127,23 +127,24 @@ export class AuthService {
           throw new UnauthorizedException('Admin role is required');
         }
 
-        return this.issueTokens(candidate.userId, roles);
+        // Admin session kéo dài 8 giờ để không bị out giữa chừng
+        return this.issueTokens(candidate.userId, roles, '8h');
       }
     }
 
     throw new UnauthorizedException('Invalid or expired admin login token');
   }
 
-  private issueTokens(userId: string, roles: RoleName[]) {
-    const accessToken = this.jwtService.sign({
-      sub: userId,
-      roles,
-    });
+  private issueTokens(userId: string, roles: RoleName[], expiresIn: string = '15m') {
+    const accessToken = this.jwtService.sign(
+      { sub: userId, roles },
+      { expiresIn },
+    );
 
     return {
       accessToken,
       tokenType: 'Bearer',
-      expiresIn: '15m',
+      expiresIn,
     };
   }
 

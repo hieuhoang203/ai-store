@@ -2,11 +2,20 @@ import type { Dashboard, EntityConfig, ListResponse } from "./admin-types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://ai-store-lnin.onrender.com";
 
+export const AUTH_TOKEN_KEY = "ai-store-admin-token";
+
+function getAuthHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const token = localStorage.getItem(AUTH_TOKEN_KEY);
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...getAuthHeaders(),
       ...(init?.headers || {}),
     },
   });

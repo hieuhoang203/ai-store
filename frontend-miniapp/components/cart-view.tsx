@@ -17,6 +17,7 @@ export function CartView({
   onRemove,
   onQuantityChange,
   onCheckout,
+  onRenewPayment,
 }: {
   items: CartItem[];
   total: number;
@@ -26,6 +27,7 @@ export function CartView({
   onRemove: (variantId: string) => void;
   onQuantityChange: (variantId: string, quantity: number) => void;
   onCheckout: () => void;
+  onRenewPayment: () => void;
 }) {
   const locked = processing || Boolean(paymentResult);
 
@@ -40,9 +42,9 @@ export function CartView({
       {paymentStatus?.payment.status === "PAID" ? (
         <PaymentSuccessPanel status={paymentStatus} />
       ) : paymentStatus?.payment.status === "FAILED" ? (
-        <PaymentExpiredPanel orderNo={paymentResult?.order.orderNo} />
+        <PaymentExpiredPanel orderNo={paymentResult?.order.orderNo} processing={processing} onRenewPayment={onRenewPayment} />
       ) : paymentResult ? (
-        <PaymentPanel result={paymentResult} />
+        <PaymentPanel result={paymentResult} processing={processing} onRenewPayment={onRenewPayment} />
       ) : null}
 
       {!paymentResult ? (
@@ -58,7 +60,9 @@ export function CartView({
                   <h3 className="line-clamp-2 text-sm font-bold text-white">{item.name}</h3>
                   <p className="mt-1 text-sm font-bold text-emerald-300">{Number(item.price).toLocaleString("vi-VN")} đ</p>
                   {item.availableStock !== undefined ? (
-                    <p className="mt-1 text-xs font-semibold text-zinc-500">Còn {item.availableStock} trong kho</p>
+                    <p className={`mt-1 text-xs font-semibold ${getStockTextClass(item.availableStock)}`}>
+                      {getStockLabel(item.availableStock)}
+                    </p>
                   ) : null}
                 </div>
                 <button
@@ -115,7 +119,15 @@ export function CartView({
   );
 }
 
-function PaymentPanel({ result }: { result: CheckoutResult }) {
+function PaymentPanel({
+  result,
+  processing,
+  onRenewPayment,
+}: {
+  result: CheckoutResult;
+  processing: boolean;
+  onRenewPayment: () => void;
+}) {
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState(() =>
     getRemainingSeconds(result.payment.qrContent?.expiresAt),
@@ -204,9 +216,14 @@ function PaymentPanel({ result }: { result: CheckoutResult }) {
       </dl>
 
       {expired ? (
-        <div className="mt-4 flex h-11 w-full items-center justify-center rounded-lg border border-red-400/25 bg-red-400/10 text-sm font-bold text-red-100">
-          Vui lòng tạo đơn thanh toán mới
-        </div>
+        <button
+          type="button"
+          onClick={onRenewPayment}
+          disabled={processing}
+          className="mt-4 h-11 w-full rounded-lg bg-emerald-300 text-sm font-bold text-black transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {processing ? "Đang tạo QR mới..." : "Tạo QR mới"}
+        </button>
       ) : (
         <a
           href={qr.checkoutUrl}
@@ -268,7 +285,15 @@ function PaymentSuccessPanel({ status }: { status: PaymentStatusResult }) {
   );
 }
 
-function PaymentExpiredPanel({ orderNo }: { orderNo?: string }) {
+function PaymentExpiredPanel({
+  orderNo,
+  processing,
+  onRenewPayment,
+}: {
+  orderNo?: string;
+  processing: boolean;
+  onRenewPayment: () => void;
+}) {
   return (
     <section className="rounded-2xl border border-red-400/30 bg-red-400/10 p-4 shadow-xl shadow-black/20">
       <div className="flex items-start gap-3">
@@ -279,10 +304,18 @@ function PaymentExpiredPanel({ orderNo }: { orderNo?: string }) {
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-200">QR đã hết hạn</p>
           <h2 className="mt-1 text-xl font-bold text-white">{orderNo || "Đơn thanh toán"}</h2>
           <p className="mt-1 text-sm leading-5 text-zinc-300">
-            Mã QR chỉ có hiệu lực trong 3 phút. Vui lòng tạo đơn mới để tiếp tục thanh toán.
+            Mã QR chỉ có hiệu lực trong 3 phút. Bạn có thể tạo QR mới từ giỏ hàng hiện tại.
           </p>
         </div>
       </div>
+      <button
+        type="button"
+        onClick={onRenewPayment}
+        disabled={processing}
+        className="mt-4 h-11 w-full rounded-lg bg-emerald-300 text-sm font-bold text-black transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {processing ? "Đang tạo QR mới..." : "Tạo QR mới"}
+      </button>
     </section>
   );
 }
@@ -296,6 +329,18 @@ function formatRemainingTime(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function getStockLabel(availableStock: number) {
+  if (availableStock <= 0) return "Hết hàng";
+  if (availableStock <= 3) return `Sắp hết, còn ${availableStock} tài khoản`;
+  return `Còn ${availableStock} tài khoản, giao ngay`;
+}
+
+function getStockTextClass(availableStock: number) {
+  if (availableStock <= 0) return "text-red-300";
+  if (availableStock <= 3) return "text-amber-300";
+  return "text-emerald-300";
 }
 
 function PaymentInfo({ label, value, important }: { label: string; value?: string | number | null; important?: boolean }) {

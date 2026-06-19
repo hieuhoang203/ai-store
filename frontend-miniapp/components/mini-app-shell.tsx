@@ -24,6 +24,7 @@ import { TopSummary } from "./top-summary";
 const text = {
   telegramRequired: "Vui l\u00f2ng m\u1edf Mini App t\u1eeb Telegram \u0111\u1ec3 thanh to\u00e1n",
   qrCreated: "\u0110\u00e3 t\u1ea1o m\u00e3 QR thanh to\u00e1n",
+  qrReused: "Mã QR thanh toán còn hiệu lực, bạn có thể tiếp tục thanh toán.",
   checkoutFailed: "Thanh to\u00e1n th\u1ea5t b\u1ea1i",
   paymentSuccess: "Thanh to\u00e1n th\u00e0nh c\u00f4ng. T\u00e0i kho\u1ea3n \u0111ang \u0111\u01b0\u1ee3c giao.",
   addedToCart: "\u0110\u00e3 th\u00eam v\u00e0o gi\u1ecf h\u00e0ng",
@@ -128,7 +129,7 @@ export function MiniAppShell() {
       const result = await checkout(initData, items);
       setPaymentResult(result);
       window.sessionStorage.setItem(PAYMENT_RESULT_STORAGE_KEY, JSON.stringify(result));
-      showToast({ type: "success", message: text.qrCreated });
+      showToast({ type: "success", message: result.reused ? text.qrReused : text.qrCreated });
     } catch (error) {
       showToast({
         type: "error",
@@ -171,6 +172,7 @@ export function MiniAppShell() {
             onRemove={removeItem}
             onQuantityChange={updateQuantity}
             onCheckout={submitCheckout}
+            onRenewPayment={submitCheckout}
           />
         ) : null}
 

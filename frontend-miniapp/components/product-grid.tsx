@@ -20,6 +20,8 @@ const text = {
   addPackage: "Th\u00eam g\u00f3i",
   outOfStock: "H\u1ebft h\u00e0ng",
   stock: "C\u00f2n",
+  lowStock: "Sắp hết",
+  instantDelivery: "Giao ngay",
   duration: "Th\u1eddi h\u1ea1n",
   warranty: "B\u1ea3o h\u00e0nh",
   days: "ng\u00e0y",
@@ -206,10 +208,7 @@ function VariantCard({
             {variant.warrantyDays ? (
               <InfoPill icon={<ShieldCheck className="h-3 w-3" />} label={`${variant.warrantyDays} ${text.days} ${text.warranty.toLowerCase()}`} />
             ) : null}
-            <InfoPill
-              icon={<PackageCheck className="h-3 w-3" />}
-              label={outOfStock ? text.outOfStock : availableStock !== undefined ? `${text.stock} ${availableStock}` : text.addPackage}
-            />
+            <InfoPill icon={<PackageCheck className="h-3 w-3" />} label={getStockLabel(availableStock)} />
           </div>
         </div>
         <div className="shrink-0 text-right">
@@ -255,4 +254,11 @@ function formatPriceRange(variants: ProductVariant[]) {
 
 function formatMoney(value: string | number) {
   return Number(value).toLocaleString("vi-VN");
+}
+
+function getStockLabel(availableStock?: number) {
+  if (availableStock === undefined) return text.instantDelivery;
+  if (availableStock <= 0) return text.outOfStock;
+  if (availableStock <= 3) return `${text.lowStock}, còn ${availableStock}`;
+  return `${text.stock} ${availableStock} - ${text.instantDelivery}`;
 }

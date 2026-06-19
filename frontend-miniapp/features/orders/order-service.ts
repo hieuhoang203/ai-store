@@ -29,6 +29,7 @@ export type CheckoutResult = {
     status: string;
     qrContent: CheckoutPaymentQr | null;
   };
+  reused?: boolean;
 };
 
 export type PaymentStatusResult = {
@@ -146,14 +147,18 @@ export type MyTicket = {
 };
 
 export async function checkout(initData: string, items: CartItem[]) {
-  const response = await api.post<CheckoutResult>("/orders/checkout", {
-    initData,
-    items: items.map((item) => ({
-      variantId: item.variantId,
-      quantity: item.quantity,
-    })),
-  });
-  return response.data;
+  try {
+    const response = await api.post<CheckoutResult>("/orders/checkout", {
+      initData,
+      items: items.map((item) => ({
+        variantId: item.variantId,
+        quantity: item.quantity,
+      })),
+    });
+    return response.data;
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error));
+  }
 }
 
 export async function getPaymentStatus(paymentId: string) {
@@ -191,4 +196,21 @@ export async function createWarrantyTicket(input: {
 export async function getMyTickets(initData: string) {
   const response = await api.post<MyTicket[]>("/tickets/my", { initData });
   return response.data;
+}
+
+function getApiErrorMessage(error: unknown) {
+  if (
+    error &&
+    typeof error === "object" &&
+    "response" in error &&
+    error.response &&
+    typeof error.response === "object" &&
+    "data" in error.response
+  ) {
+    const data = error.response.data as { message?: unknown };
+    if (Array.isArray(data.message)) return data.message.join("\n");
+    if (typeof data.message === "string") return data.message;
+  }
+
+  return "Không thể tạo mã QR thanh toán. Vui lòng thử lại.";
 }

@@ -318,6 +318,22 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  async expireOrderPendingPayments(orderId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        payments: {
+          where: { status: PaymentStatus.PENDING },
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!order) return;
+
+    await Promise.all(order.payments.map((payment) => this.expirePayment(payment.id)));
+  }
+
   private async syncPendingPayosPayment(paymentId: string) {
     const payment = await this.prisma.payment.findUniqueOrThrow({
       where: { id: paymentId },

@@ -2,7 +2,9 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import {
   DeliveryStatus,
+  InventoryStatus,
   OrderStatus,
+  Payment,
   PaymentStatus,
   Prisma,
 } from '../../generated/prisma/client.js';
@@ -14,6 +16,18 @@ import { PAYMENT_QR_TTL_MS } from '../payments/payments.service';
 import { PaymentsService } from '../payments/payments.service';
 import { CheckoutDto } from './dto/checkout.dto';
 import { OrderHistoryDto } from './dto/order-history.dto';
+
+type NormalizedCheckoutItem = {
+  variantId: string;
+  quantity: number;
+};
+
+type PendingCheckoutOrder = Prisma.OrderGetPayload<{
+  include: {
+    items: true;
+    payments: true;
+  };
+}>;
 
 @Injectable()
 export class OrdersService {
@@ -29,12 +43,27 @@ export class OrdersService {
   async checkout(dto: CheckoutDto) {
     const requestedItems = this.normalizeItems(dto);
     if (!requestedItems.length) {
-      throw new BadRequestException('Cart is empty');
+      throw new BadRequestException('Giỏ hàng đang trống.');
     }
     const user = await this.authService.getOrCreateTelegramUser(dto.initData);
     const expiresAt = new Date(Date.now() + PAYMENT_QR_TTL_MS);
 
-    const order = await this.prisma.$transaction(async (tx) => {
+    const checkout = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${user.id}))`;
+
+      const reusableCheckout = await this.findReusablePendingCheckout(tx, user.id, requestedItems);
+      if (reusableCheckout?.status === 'ready') {
+        return reusableCheckout;
+      }
+
+      if (reusableCheckout?.status === 'creating') {
+        throw new BadRequestException('Đơn thanh toán đang được tạo. Vui lòng thử lại sau vài giây.');
+      }
+
+      for (const staleOrder of reusableCheckout?.staleOrders || []) {
+        await this.expirePendingOrderInTransaction(tx, staleOrder.id);
+      }
+
       const variants = await tx.productVariant.findMany({
         where: {
           id: { in: requestedItems.map((item) => item.variantId) },
@@ -49,7 +78,7 @@ export class OrdersService {
       const items = requestedItems.map((item) => {
         const variant = variantMap.get(item.variantId);
         if (!variant) {
-          throw new BadRequestException(`Variant ${item.variantId} is not available`);
+          throw new BadRequestException('Gói sản phẩm không còn khả dụng.');
         }
 
         const unitPrice = variant.sellPrice;
@@ -98,9 +127,18 @@ export class OrdersService {
         }
       }
 
-      return createdOrder;
+      return { status: 'created' as const, order: createdOrder };
     });
 
+    if (checkout.status === 'ready') {
+      return {
+        order: checkout.order,
+        payment: this.presentPayment(checkout.payment),
+        reused: true,
+      };
+    }
+
+    const order = checkout.order;
     let payment: Awaited<ReturnType<PaymentsService['createPayosPayment']>>;
     try {
       payment = await this.paymentsService.createPayosPayment(order.id, expiresAt);
@@ -343,6 +381,120 @@ export class OrdersService {
     }
 
     return Array.from(itemMap.entries()).map(([variantId, quantity]) => ({ variantId, quantity }));
+  }
+
+  private async findReusablePendingCheckout(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    requestedItems: NormalizedCheckoutItem[],
+  ) {
+    const candidates = await tx.order.findMany({
+      where: {
+        userId,
+        status: OrderStatus.PENDING,
+        paymentStatus: PaymentStatus.PENDING,
+        isDeleted: false,
+        createdAt: { gt: new Date(Date.now() - PAYMENT_QR_TTL_MS * 2) },
+      },
+      include: {
+        items: {
+          where: { isDeleted: false },
+          orderBy: { createdAt: 'asc' },
+        },
+        payments: {
+          where: { status: PaymentStatus.PENDING, isDeleted: false },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+
+    const matchingOrders = candidates.filter((order) => this.isSameCart(order.items, requestedItems));
+    const staleOrders: PendingCheckoutOrder[] = [];
+
+    for (const order of matchingOrders) {
+      const payment = order.payments[0];
+      if (!payment) {
+        if (Date.now() - order.createdAt.getTime() < 30_000) {
+          return { status: 'creating' as const };
+        }
+
+        staleOrders.push(order);
+        continue;
+      }
+
+      if (this.isPaymentStillUsable(payment)) {
+        return { status: 'ready' as const, order, payment };
+      }
+
+      staleOrders.push(order);
+    }
+
+    return { status: 'none' as const, staleOrders };
+  }
+
+  private isSameCart(
+    orderItems: Array<{ variantId: string; quantity: number }>,
+    requestedItems: NormalizedCheckoutItem[],
+  ) {
+    if (orderItems.length !== requestedItems.length) return false;
+
+    const requestedMap = new Map(requestedItems.map((item) => [item.variantId, item.quantity]));
+    return orderItems.every((item) => requestedMap.get(item.variantId) === item.quantity);
+  }
+
+  private isPaymentStillUsable(payment: Payment) {
+    if (payment.status !== PaymentStatus.PENDING) return false;
+    const expiresAt = this.getPaymentExpiresAt(payment.qrContent);
+    return Boolean(expiresAt && expiresAt.getTime() > Date.now());
+  }
+
+  private getPaymentExpiresAt(qrContent?: string | null) {
+    if (!qrContent) return null;
+
+    try {
+      const parsed = JSON.parse(qrContent) as { expiresAt?: unknown };
+      if (typeof parsed.expiresAt !== 'string') return null;
+      const expiresAt = new Date(parsed.expiresAt);
+      return Number.isNaN(expiresAt.getTime()) ? null : expiresAt;
+    } catch {
+      return null;
+    }
+  }
+
+  private async expirePendingOrderInTransaction(tx: Prisma.TransactionClient, orderId: string) {
+    await tx.payment.updateMany({
+      where: {
+        orderId,
+        status: PaymentStatus.PENDING,
+      },
+      data: { status: PaymentStatus.FAILED },
+    });
+
+    await tx.inventory.updateMany({
+      where: {
+        reservedOrderId: orderId,
+      },
+      data: {
+        status: InventoryStatus.AVAILABLE,
+        reservedBy: null,
+        reservedAt: null,
+        reservedUntil: null,
+        reservedOrderId: null,
+      },
+    });
+
+    await tx.order.updateMany({
+      where: {
+        id: orderId,
+        status: OrderStatus.PENDING,
+      },
+      data: {
+        status: OrderStatus.CANCELLED,
+        paymentStatus: PaymentStatus.FAILED,
+      },
+    });
   }
 
   private createPayosOrderCode() {

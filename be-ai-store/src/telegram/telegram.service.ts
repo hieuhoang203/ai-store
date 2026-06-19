@@ -61,9 +61,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     this.bot = new Telegraf(token);
     this.registerCommands(this.bot);
     await this.bot.telegram.setMyCommands([
-      { command: 'start', description: 'Mở AI Store' },
-      { command: 'support', description: 'Liên hệ hỗ trợ' },
-      { command: 'admin', description: 'Đăng nhập trang quản trị' },
+      { command: 'start', description: '🛒 Mở AI Store' },
+      { command: 'support', description: '🆘 Liên hệ hỗ trợ' },
+      { command: 'admin', description: '🔐 Đăng nhập trang quản trị' },
     ]);
     void this.bot
       .launch()
@@ -106,7 +106,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     bot.action('support', async (context) => {
       await context.answerCbQuery().catch(() => undefined);
       await this.syncTelegramProfile(context.from);
-      await context.reply('Vui lòng mô tả vấn đề của bạn. Đội hỗ trợ sẽ phản hồi sớm nhất.');
+      await context.reply(this.renderSupportInfoMessage());
     });
 
     bot.action('orders', async (context) => {
@@ -135,7 +135,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
     bot.command('support', async (context) => {
       await this.syncTelegramProfile(context.from);
-      await context.reply('Vui lòng mô tả vấn đề của bạn. Đội hỗ trợ sẽ phản hồi sớm nhất.');
+      await context.reply(this.renderSupportInfoMessage());
     });
 
     bot.command('admin', async (context) => {
@@ -183,7 +183,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private async replyStartMenu(context: { reply: (...args: any[]) => unknown }) {
     const miniAppUrl = this.configService.getOrThrow<string>('TELEGRAM_MINIAPP_URL');
     const launchButtons = this.isHttpsUrl(miniAppUrl)
-      ? [[Markup.button.webApp('Mở AI Store', miniAppUrl)]]
+      ? [[Markup.button.webApp('🛒 Mở AI Store', miniAppUrl)]]
       : [];
 
     if (!launchButtons.length) {
@@ -198,10 +198,37 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         : 'Chào mừng bạn đến AI Store. Mini App cần URL HTTPS để mở trong Telegram.',
       Markup.inlineKeyboard([
         ...launchButtons,
-        [Markup.button.callback('Đơn hàng của tôi', 'orders')],
-        [Markup.button.callback('Hỗ trợ', 'support')],
+        [Markup.button.callback('📦 Đơn hàng của tôi', 'orders')],
+        [Markup.button.callback('🆘 Hỗ trợ', 'support')],
       ]),
     );
+  }
+
+  private renderSupportInfoMessage() {
+    const supportName = this.configService.get<string>('SUPPORT_NAME') || 'AI Store Support';
+    const phoneNumber =
+      this.configService.get<string>('SUPPORT_PHONE') ||
+      this.configService.get<string>('SUPPORT_ZALO') ||
+      '0966628527';
+    const telegramUsername = this.normalizeTelegramUsername(
+      this.configService.get<string>('SUPPORT_TELEGRAM') || '@hieuhv203',
+    );
+    const workingTime = this.configService.get<string>('SUPPORT_WORKING_TIME') || '08:00 - 22:00 hằng ngày';
+
+    return [
+      '🆘 THÔNG TIN HỖ TRỢ',
+      '',
+      'Nếu bạn cần hỗ trợ hoặc gặp sự cố trong quá trình sử dụng dịch vụ, vui lòng liên hệ:',
+      '',
+      `👤 Hỗ trợ: ${supportName}`,
+      `📱 Số điện thoại: ${phoneNumber}`,
+      `✈️ Telegram: @${telegramUsername}`,
+      '',
+      '⏰ Thời gian hỗ trợ:',
+      workingTime,
+      '',
+      'Xin cảm ơn quý khách đã tin tưởng và sử dụng dịch vụ của AI Store! ❤️',
+    ].join('\n');
   }
 
   private async replyOrderList(context: {
@@ -217,7 +244,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     if (!orders.length) {
       await context.reply(
         'LỊCH SỬ MUA HÀNG\n\nBạn chưa có đơn hàng nào tại AI Store.',
-        Markup.inlineKeyboard([[Markup.button.callback('Quay lại menu', 'start')]]),
+        Markup.inlineKeyboard([[Markup.button.callback('🔙 Quay lại menu', 'start')]]),
       );
       return;
     }
@@ -281,8 +308,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     await context.reply(this.renderOrderDetail(order), {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback(`Yêu cầu bảo hành (${this.getWarrantyLabel(order)})`, `warranty:${order.id}`)],
-        [Markup.button.callback('Quay lại danh sách đơn', 'orders:back')],
+        [Markup.button.callback(`🛡️ Yêu cầu bảo hành (${this.getWarrantyLabel(order)})`, `warranty:${order.id}`)],
+        [Markup.button.callback('🔙 Quay lại danh sách đơn', 'orders:back')],
       ]),
     });
   }
@@ -318,6 +345,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const suffix = order.items.length > 1 ? ` +${order.items.length - 1}` : '';
 
     return [
+      '📦',
       order.orderNo,
       '-',
       `${productLabel}${suffix}`,
@@ -406,6 +434,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
     if (!warrantyDays.length) return '0 ngày';
     return `${Math.max(...warrantyDays)} ngày`;
+  }
+
+  private normalizeTelegramUsername(value: string) {
+    return value.trim().replace(/^@+/, '') || 'hieuhv203';
   }
 
   private getBankName(qrContent?: string | null) {

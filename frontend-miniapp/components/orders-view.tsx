@@ -48,7 +48,9 @@ type ReviewTarget = {
   orderId: string;
   orderNo: string;
   reviewId?: string;
-  productVariantId?: string;
+  productVariantId: string;
+  productName: string;
+  variantName: string;
   rating: number;
   comment: string;
 };
@@ -368,25 +370,6 @@ function OrderDetailPanel({
           <InfoRow label="Mã CK" value={order.paymentContent || "-"} />
           <InfoRow label="Thời gian" value={formatDateTime(order.createdAt)} />
         </dl>
-        {order.canReview || order.review ? (
-          <button
-            type="button"
-            onClick={() =>
-              onReview({
-                orderId: order.id,
-                orderNo: order.orderNo,
-                reviewId: order.review?.id,
-                productVariantId: order.products[0]?.variantId,
-                rating: order.review?.rating || 5,
-                comment: order.review?.comment || "",
-              })
-            }
-            className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-amber-300/25 bg-amber-300/10 px-3 text-sm font-bold text-amber-100 transition hover:bg-amber-300/20"
-          >
-            <Star className="h-4 w-4 fill-current" />
-            {order.review ? `Đã đánh giá ${order.review.rating}/5 - Sửa đánh giá` : "Đánh giá đơn hàng"}
-          </button>
-        ) : null}
       </div>
 
       {order.products.map((product, productIndex) => (
@@ -405,6 +388,28 @@ function OrderDetailPanel({
               </span>
             ) : null}
           </div>
+
+          {product.canReview || product.review ? (
+            <button
+              type="button"
+              onClick={() =>
+                onReview({
+                  orderId: order.id,
+                  orderNo: order.orderNo,
+                  reviewId: product.review?.id,
+                  productVariantId: product.variantId,
+                  productName: product.productName,
+                  variantName: product.variantName,
+                  rating: product.review?.rating || 5,
+                  comment: product.review?.comment || "",
+                })
+              }
+              className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-amber-300/25 bg-amber-300/10 px-3 text-sm font-bold text-amber-100 transition hover:bg-amber-300/20"
+            >
+              <Star className="h-4 w-4 fill-current" />
+              {product.review ? `Đã đánh giá ${product.review.rating}/5 - Sửa đánh giá` : "Đánh giá gói này"}
+            </button>
+          ) : null}
 
           <div className="mt-3 space-y-2">
             {product.accounts.length ? (
@@ -633,6 +638,9 @@ function ReviewModal({
             <div className="min-w-0">
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-200">{text.review}</p>
               <h3 className="mt-1 break-words text-lg font-bold text-white">{target.orderNo}</h3>
+              <p className="mt-1 line-clamp-2 text-sm font-semibold text-zinc-400">
+                {target.productName} - {target.variantName}
+              </p>
             </div>
             <button
               type="button"

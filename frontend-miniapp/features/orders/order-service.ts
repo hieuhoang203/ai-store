@@ -126,6 +126,13 @@ export type OrderDetail = {
     variantName: string;
     quantity: number;
     warrantyDays?: number | null;
+    canReview?: boolean;
+    review?: {
+      id: string;
+      rating: number;
+      comment?: string | null;
+      isHidden: boolean;
+    } | null;
     accounts: Array<{
       email?: string | null;
       username?: string | null;
@@ -256,7 +263,7 @@ export async function getMyTickets(initData: string) {
 export async function createReview(input: {
   initData: string;
   orderId: string;
-  productVariantId?: string;
+  productVariantId: string;
   rating: number;
   comment?: string;
 }) {

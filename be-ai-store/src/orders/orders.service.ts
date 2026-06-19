@@ -281,6 +281,12 @@ export class OrdersService {
     }
 
     const payment = order.payments[0];
+    const reviewByVariantId = new Map(
+      order.reviews.map((review) => [review.productVariantId, review]),
+    );
+    const canReviewOrder =
+      order.status === OrderStatus.DELIVERED && order.paymentStatus === PaymentStatus.PAID;
+
     return {
       id: order.id,
       orderNo: order.orderNo,
@@ -294,7 +300,9 @@ export class OrdersService {
       bankName: this.getBankName(payment?.qrContent),
       paymentContent: payment?.paymentContent,
       warrantyDays: this.getWarrantyDays(order.items),
-      canReview: order.status === OrderStatus.DELIVERED && order.paymentStatus === PaymentStatus.PAID && !order.reviews.length,
+      canReview:
+        canReviewOrder &&
+        order.items.some((item) => !reviewByVariantId.has(item.variantId)),
       review: order.reviews[0]
         ? {
             id: order.reviews[0].id,
@@ -303,30 +311,43 @@ export class OrdersService {
             isHidden: order.reviews[0].isHidden,
           }
         : null,
-      products: order.items.map((item) => ({
-        variantId: item.variantId,
-        productName: item.variant.product.name,
-        variantName: item.variant.name,
-        quantity: item.quantity,
-        warrantyDays: item.variant.warrantyDays,
-        accounts: item.deliveries
-          .filter((delivery) => delivery.status === DeliveryStatus.DELIVERED)
-          .map((delivery) => {
-            const metadata = this.normalizeMetadata(delivery.inventory.metadata);
-            return {
-              email: delivery.inventory.accountEmail,
-              username: metadata.username || delivery.inventory.accountEmail,
-              password: this.inventoryPasswordService.decrypt(delivery.inventory.encryptedPassword),
-              twoFactor:
-                metadata.twoFactor ||
-                metadata.twoFa ||
-                metadata['2fa'] ||
-                metadata.pass2fa ||
-                null,
-              deliveredAt: delivery.deliveredAt,
-            };
-          }),
-      })),
+      products: order.items.map((item) => {
+        const review = reviewByVariantId.get(item.variantId);
+
+        return {
+          variantId: item.variantId,
+          productName: item.variant.product.name,
+          variantName: item.variant.name,
+          quantity: item.quantity,
+          warrantyDays: item.variant.warrantyDays,
+          canReview: canReviewOrder && !review,
+          review: review
+            ? {
+                id: review.id,
+                rating: review.rating,
+                comment: review.comment,
+                isHidden: review.isHidden,
+              }
+            : null,
+          accounts: item.deliveries
+            .filter((delivery) => delivery.status === DeliveryStatus.DELIVERED)
+            .map((delivery) => {
+              const metadata = this.normalizeMetadata(delivery.inventory.metadata);
+              return {
+                email: delivery.inventory.accountEmail,
+                username: metadata.username || delivery.inventory.accountEmail,
+                password: this.inventoryPasswordService.decrypt(delivery.inventory.encryptedPassword),
+                twoFactor:
+                  metadata.twoFactor ||
+                  metadata.twoFa ||
+                  metadata['2fa'] ||
+                  metadata.pass2fa ||
+                  null,
+                deliveredAt: delivery.deliveredAt,
+              };
+            }),
+        };
+      }),
     };
   }
 

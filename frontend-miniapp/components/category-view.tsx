@@ -397,6 +397,8 @@ function ProductReviewsPanel({
   reviews: ProductReview[];
   loading: boolean;
 }) {
+  const groups = groupReviewsByVariant(reviews);
+
   return (
     <section className="space-y-3 rounded-xl border border-white/10 bg-white/[0.045] p-3">
       <div className="flex items-center justify-between gap-3">
@@ -412,18 +414,34 @@ function ProductReviewsPanel({
       {loading ? (
         <div className="h-16 animate-pulse rounded-lg bg-black/25" />
       ) : reviews.length ? (
-        <div className="space-y-2">
-          {reviews.map((review) => (
-            <article key={review.id} className="rounded-lg border border-white/10 bg-black/25 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-sm font-bold text-white">{review.userName}</p>
-                <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-200">
+        <div className="space-y-3">
+          {groups.map((group) => (
+            <div key={group.variantId} className="rounded-lg border border-white/10 bg-black/20 p-2.5">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-white">{group.variantName}</p>
+                  <p className="text-xs font-semibold text-zinc-500">{group.reviews.length} lượt đánh giá</p>
+                </div>
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-300/12 px-2 py-1 text-xs font-bold text-amber-200">
                   <Star className="h-3.5 w-3.5 fill-current" />
-                  {review.rating}/5
+                  {group.averageRating}
                 </span>
               </div>
-              {review.comment ? <p className="mt-2 text-sm leading-5 text-zinc-300">{review.comment}</p> : null}
-            </article>
+              <div className="space-y-2">
+                {group.reviews.map((review) => (
+                  <article key={review.id} className="rounded-md border border-white/10 bg-black/30 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-sm font-bold text-white">{review.userName}</p>
+                      <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-200">
+                        <Star className="h-3.5 w-3.5 fill-current" />
+                        {review.rating}/5
+                      </span>
+                    </div>
+                    {review.comment ? <p className="mt-2 text-sm leading-5 text-zinc-300">{review.comment}</p> : null}
+                  </article>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       ) : (
@@ -433,6 +451,29 @@ function ProductReviewsPanel({
       )}
     </section>
   );
+}
+
+function groupReviewsByVariant(reviews: ProductReview[]) {
+  const groups = new Map<string, { variantId: string; variantName: string; reviews: ProductReview[] }>();
+
+  for (const review of reviews) {
+    const variantId = review.productVariantId || "unknown";
+    const group = groups.get(variantId) || {
+      variantId,
+      variantName: review.variantName || "Gói sản phẩm",
+      reviews: [],
+    };
+
+    group.reviews.push(review);
+    groups.set(variantId, group);
+  }
+
+  return Array.from(groups.values()).map((group) => ({
+    ...group,
+    averageRating: (
+      group.reviews.reduce((sum, review) => sum + review.rating, 0) / group.reviews.length
+    ).toFixed(1),
+  }));
 }
 
 function getStockLabel(availableStock?: number) {

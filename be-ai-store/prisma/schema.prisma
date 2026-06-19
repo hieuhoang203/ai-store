@@ -443,7 +443,7 @@ model Ticket {
 
 model Review {
   id               String         @id @default(uuid()) @db.Uuid
-  orderId          String         @unique @map("order_id") @db.Uuid
+  orderId          String         @map("order_id") @db.Uuid
   userId           String         @map("user_id") @db.Uuid
   productVariantId String         @map("product_variant_id") @db.Uuid
   rating           Int
@@ -456,6 +456,7 @@ model Review {
   user             User           @relation(fields: [userId], references: [id])
   productVariant   ProductVariant @relation(fields: [productVariantId], references: [id])
 
+  @@unique([orderId, productVariantId], map: "uq_reviews_order_variant")
   @@index([userId], map: "idx_reviews_user")
   @@index([productVariantId], map: "idx_reviews_variant")
   @@index([rating], map: "idx_reviews_rating")

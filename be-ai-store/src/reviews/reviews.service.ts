@@ -34,9 +34,14 @@ export class ReviewsService {
         throw new BadRequestException('Sản phẩm đánh giá không thuộc đơn hàng này.');
       }
 
-      const existing = await tx.review.findUnique({ where: { orderId: order.id } });
+      const existing = await tx.review.findFirst({
+        where: {
+          orderId: order.id,
+          productVariantId,
+        },
+      });
       if (existing && !existing.isDeleted) {
-        throw new BadRequestException('Đơn hàng này đã được đánh giá.');
+        throw new BadRequestException('Sản phẩm này đã được đánh giá.');
       }
 
       const review = existing

@@ -60,11 +60,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
     this.bot = new Telegraf(token);
     this.registerCommands(this.bot);
+    // Chỉ hiển thị 2 lệnh công khai trong menu gợi ý của Telegram
     await this.bot.telegram.setMyCommands([
       { command: 'start', description: '🛒 Mở AI Store' },
       { command: 'support', description: '🆘 Liên hệ hỗ trợ' },
-      { command: 'admin', description: '🔐 Đăng nhập trang quản trị' },
     ]);
+    // Lệnh /admin vẫn hoạt động khi gọi trực tiếp nhưng ẩn khỏi menu
     void this.bot
       .launch()
       .then(() => this.logger.log('Telegram bot launched'))

@@ -9,6 +9,7 @@ import {
   Prisma,
 } from '../../generated/prisma/client.js';
 import { AuthService } from '../auth/auth.service';
+import { CouponsService } from '../coupons/coupons.service';
 import { PrismaService } from '../database/prisma.service';
 import { InventoryPasswordService } from '../inventories/inventory-password.service';
 import { InventoriesService } from '../inventories/inventories.service';
@@ -38,6 +39,7 @@ export class OrdersService {
     private readonly inventoriesService: InventoriesService,
     private readonly inventoryPasswordService: InventoryPasswordService,
     private readonly configService: ConfigService,
+    private readonly couponsService: CouponsService,
   ) {}
 
   async checkout(dto: CheckoutDto) {
@@ -51,7 +53,23 @@ export class OrdersService {
     const checkout = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${user.id}))`;
 
-      const reusableCheckout = await this.findReusablePendingCheckout(tx, user.id, requestedItems);
+      const couponItems = await this.couponsService.getCheckoutItems(tx, requestedItems);
+      const couponSubtotal = this.couponsService.sumItems(couponItems);
+      const couponValidation = await this.couponsService.validateCoupon(tx, {
+        code: dto.couponCode,
+        userId: user.id,
+        items: couponItems,
+        subtotal: couponSubtotal,
+        lock: true,
+      });
+      const couponDiscount = couponValidation?.discountAmount || new Prisma.Decimal(0);
+
+      const reusableCheckout = await this.findReusablePendingCheckout(
+        tx,
+        user.id,
+        requestedItems,
+        couponValidation?.coupon.id || null,
+      );
       if (reusableCheckout?.status === 'ready') {
         return reusableCheckout;
       }
@@ -95,8 +113,9 @@ export class OrdersService {
           orderNo: `AI${this.createPayosOrderCode()}`,
           userId: user.id,
           subtotal,
-          discount: new Prisma.Decimal(0),
-          totalAmount: subtotal,
+          discount: couponDiscount,
+          totalAmount: Prisma.Decimal.max(subtotal.sub(couponDiscount), new Prisma.Decimal(0)),
+          couponId: couponValidation?.coupon.id,
           items: {
             create: items.map((item) => ({
               variantId: item.variantId,
@@ -108,6 +127,15 @@ export class OrdersService {
         },
         include: { items: true },
       });
+
+      if (couponValidation) {
+        await this.couponsService.recordCouponUsage(tx, {
+          couponId: couponValidation.coupon.id,
+          userId: user.id,
+          orderId: createdOrder.id,
+          discountAmount: couponValidation.discountAmount,
+        });
+      }
 
       const orderItemMap = new Map(createdOrder.items.map((item) => [item.variantId, item]));
       for (const item of items) {
@@ -230,6 +258,10 @@ export class OrdersService {
           where: { isDeleted: false },
           orderBy: { createdAt: 'desc' },
         },
+        reviews: {
+          where: { isDeleted: false },
+          orderBy: { createdAt: 'desc' },
+        },
         items: {
           orderBy: { createdAt: 'asc' },
           include: {
@@ -255,12 +287,24 @@ export class OrdersService {
       status: order.status,
       paymentStatus: order.paymentStatus,
       totalAmount: order.totalAmount.toString(),
+      subtotal: order.subtotal.toString(),
+      discount: order.discount.toString(),
       createdAt: order.createdAt,
       paidAt: payment?.paidAt,
       bankName: this.getBankName(payment?.qrContent),
       paymentContent: payment?.paymentContent,
       warrantyDays: this.getWarrantyDays(order.items),
+      canReview: order.status === OrderStatus.DELIVERED && order.paymentStatus === PaymentStatus.PAID && !order.reviews.length,
+      review: order.reviews[0]
+        ? {
+            id: order.reviews[0].id,
+            rating: order.reviews[0].rating,
+            comment: order.reviews[0].comment,
+            isHidden: order.reviews[0].isHidden,
+          }
+        : null,
       products: order.items.map((item) => ({
+        variantId: item.variantId,
         productName: item.variant.product.name,
         variantName: item.variant.name,
         quantity: item.quantity,
@@ -387,10 +431,12 @@ export class OrdersService {
     tx: Prisma.TransactionClient,
     userId: string,
     requestedItems: NormalizedCheckoutItem[],
+    couponId: string | null,
   ) {
     const candidates = await tx.order.findMany({
       where: {
         userId,
+        couponId,
         status: OrderStatus.PENDING,
         paymentStatus: PaymentStatus.PENDING,
         isDeleted: false,

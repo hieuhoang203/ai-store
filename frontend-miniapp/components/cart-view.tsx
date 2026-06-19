@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { AlertCircle, CheckCircle2, Clock3, ExternalLink, Minus, Plus, Trash2 } from "lucide-react";
-import type { CheckoutResult, PaymentStatusResult } from "@/features/orders/order-service";
+import type { CheckoutResult, CouponValidationResult, PaymentStatusResult } from "@/features/orders/order-service";
 import type { CartItem } from "@/store/cart-store";
 import { EmptyState } from "./empty-state";
 import { SectionTitle } from "./section-title";
@@ -14,20 +14,32 @@ export function CartView({
   processing,
   paymentResult,
   paymentStatus,
+  couponCode,
+  couponResult,
+  couponProcessing,
   onRemove,
   onQuantityChange,
   onCheckout,
   onRenewPayment,
+  onCouponCodeChange,
+  onApplyCoupon,
+  onClearCoupon,
 }: {
   items: CartItem[];
   total: number;
   processing: boolean;
   paymentResult: CheckoutResult | null;
   paymentStatus: PaymentStatusResult | null;
+  couponCode: string;
+  couponResult: CouponValidationResult | null;
+  couponProcessing: boolean;
   onRemove: (variantId: string) => void;
   onQuantityChange: (variantId: string, quantity: number) => void;
   onCheckout: () => void;
   onRenewPayment: () => void;
+  onCouponCodeChange: (value: string) => void;
+  onApplyCoupon: () => void;
+  onClearCoupon: () => void;
 }) {
   const locked = processing || Boolean(paymentResult);
 
@@ -100,10 +112,60 @@ export function CartView({
             </article>
           ))}
 
+          <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3 shadow-xl shadow-black/20">
+            <p className="text-sm font-bold text-white">Mã giảm giá</p>
+            <div className="mt-3 flex gap-2">
+              <input
+                value={couponCode}
+                onChange={(event) => onCouponCodeChange(event.target.value.toUpperCase())}
+                disabled={locked || couponProcessing}
+                placeholder="WELCOME50"
+                className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/35 px-3 text-sm font-bold uppercase text-white outline-none placeholder:text-zinc-600 focus:border-emerald-300/50 disabled:opacity-60"
+              />
+              {couponResult ? (
+                <button
+                  type="button"
+                  onClick={onClearCoupon}
+                  disabled={locked}
+                  className="h-10 rounded-lg border border-white/10 bg-white/[0.045] px-3 text-sm font-bold text-zinc-200 disabled:opacity-50"
+                >
+                  Xóa
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onApplyCoupon}
+                  disabled={locked || couponProcessing || !couponCode.trim()}
+                  className="h-10 rounded-lg bg-emerald-300 px-3 text-sm font-bold text-black transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {couponProcessing ? "Đang áp dụng" : "Áp dụng"}
+                </button>
+              )}
+            </div>
+            {couponResult ? (
+              <div className="mt-3 rounded-lg border border-emerald-300/20 bg-emerald-300/10 p-3 text-sm">
+                <p className="font-bold text-emerald-100">
+                  {couponResult.coupon.code} - {couponResult.coupon.name}
+                </p>
+                <p className="mt-1 text-zinc-300">Giảm {formatMoney(couponResult.discountAmount)} đ</p>
+              </div>
+            ) : null}
+          </div>
+
           <div className="sticky bottom-3 rounded-2xl border border-emerald-300/25 bg-[#071008]/95 p-3 shadow-2xl shadow-black/50 backdrop-blur">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-semibold text-zinc-400">Tổng thanh toán</span>
-              <span className="text-lg font-bold text-emerald-300">{total.toLocaleString("vi-VN")} đ</span>
+            <div className="mb-3 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-zinc-400">Tạm tính</span>
+                <span className="text-sm font-bold text-white">{formatMoney(total)} đ</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-zinc-400">Giảm giá</span>
+                <span className="text-sm font-bold text-emerald-200">-{formatMoney(couponResult?.discountAmount || 0)} đ</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-white/10 pt-2">
+                <span className="text-sm font-semibold text-zinc-400">Tổng thanh toán</span>
+                <span className="text-lg font-bold text-emerald-300">{formatMoney(couponResult?.finalAmount || total)} đ</span>
+              </div>
             </div>
             <button
               disabled={locked || !items.length}
@@ -341,6 +403,10 @@ function getStockTextClass(availableStock: number) {
   if (availableStock <= 0) return "text-red-300";
   if (availableStock <= 3) return "text-amber-300";
   return "text-emerald-300";
+}
+
+function formatMoney(value: string | number) {
+  return Number(value).toLocaleString("vi-VN");
 }
 
 function PaymentInfo({ label, value, important }: { label: string; value?: string | number | null; important?: boolean }) {

@@ -7,6 +7,8 @@ export type ProductVariant = {
   durationDays?: number | null;
   warrantyDays?: number | null;
   availableStock?: number;
+  averageRating?: string;
+  reviewCount?: number;
 };
 
 export type Product = {
@@ -20,7 +22,28 @@ export type Product = {
   variants: ProductVariant[];
 };
 
+export type ProductReview = {
+  id: string;
+  userName: string;
+  rating: number;
+  comment?: string | null;
+  createdAt: string;
+};
+
+export type ProductReviewsResult = {
+  averageRating: string;
+  reviewCount: number;
+  data: ProductReview[];
+};
+
 export async function getProducts() {
   const response = await api.get<Product[]>("/products");
+  return response.data;
+}
+
+export async function getProductReviews(productId: string) {
+  const response = await api.get<ProductReviewsResult>(`/products/${productId}/reviews`, {
+    params: { limit: 5 },
+  });
   return response.data;
 }

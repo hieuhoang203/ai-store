@@ -5,6 +5,7 @@ import { AdminModule } from './admin/admin.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
+import { CouponsModule } from './coupons/coupons.module';
 import { PrismaModule } from './database/prisma.module';
 import { DeliveriesModule } from './deliveries/deliveries.module';
 import { HealthModule } from './health/health.module';
@@ -15,6 +16,7 @@ import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ProductsModule } from './products/products.module';
 import { RedisModule } from './redis/redis.module';
+import { ReviewsModule } from './reviews/reviews.module';
 import { RolesModule } from './roles/roles.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { TicketsModule } from './tickets/tickets.module';
@@ -54,10 +56,12 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     RolesModule,
     TelegramModule,
+    CouponsModule,
     ProductsModule,
     InventoriesModule,
     OrdersModule,
     PaymentsModule,
+    ReviewsModule,
     DeliveriesModule,
     NotificationsModule,
     TicketsModule,

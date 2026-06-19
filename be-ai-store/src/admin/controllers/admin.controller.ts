@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { AdminService } from '../services/admin.service';
@@ -59,6 +60,20 @@ export class AdminController {
     @Body() payload: Record<string, unknown>,
   ) {
     return this.adminService.update(entity, id, payload);
+  }
+
+  @Put(':entity/:id')
+  replace(
+    @Param('entity') entity: string,
+    @Param('id') id: string,
+    @Body() payload: Record<string, unknown>,
+  ) {
+    return this.adminService.update(entity, id, payload);
+  }
+
+  @Patch('coupons/:id/status')
+  updateCouponStatus(@Param('id') id: string, @Body() payload: { isActive?: boolean }) {
+    return this.adminService.update('coupons', id, { isActive: Boolean(payload.isActive) });
   }
 
   @Delete(':entity/:id')

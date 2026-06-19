@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  DiscountType,
   InventoryStatus,
   NotificationType,
+  Prisma,
   TicketStatus,
   UserStatus,
 } from '../../generated/prisma/client.js';
@@ -13,6 +15,7 @@ import {
   renderOutOfStockNotification,
   type StockNotificationProduct,
 } from './stock-notification-message';
+import { renderCouponNotification } from './coupon-notification-message';
 
 @Injectable()
 export class NotificationsService {
@@ -139,6 +142,38 @@ export class NotificationsService {
     });
   }
 
+  async announceCouponCreated(couponId: string) {
+    const coupon = await this.prisma.coupon.findUnique({
+      where: { id: couponId },
+      include: {
+        products: {
+          where: { isDeleted: false },
+          include: {
+            productVariant: {
+              include: { product: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!coupon || coupon.isDeleted || !coupon.isActive) return;
+
+    const content = renderCouponNotification({
+      couponCode: coupon.code,
+      discountText: this.renderCouponDiscount(coupon),
+      applyScope: this.renderCouponApplyScope(coupon.products),
+      remainingUsage: this.renderRemainingUsage(coupon.usageLimit, coupon.usedCount),
+      expiredAt: this.renderExpiredAt(coupon.endsAt),
+    });
+
+    await this.broadcast({
+      title: 'Voucher mới đã phát hành',
+      content,
+      type: NotificationType.SYSTEM,
+    });
+  }
+
   async announceVariantOutOfStock(variantId: string) {
     const variant = await this.prisma.productVariant.findUnique({
       where: { id: variantId },
@@ -223,6 +258,87 @@ export class NotificationsService {
       categoryName: variant.product.categoryRef?.name,
       variantName: variant.name,
     };
+  }
+
+  private renderCouponDiscount(coupon: {
+    discountType: DiscountType;
+    discountValue: Prisma.Decimal;
+    maxDiscount: Prisma.Decimal | null;
+    minOrderAmount: Prisma.Decimal | null;
+  }) {
+    const lines =
+      coupon.discountType === DiscountType.PERCENT
+        ? [`${this.formatNumber(coupon.discountValue)}%`]
+        : [`${this.formatMoney(coupon.discountValue)}đ`];
+
+    if (coupon.maxDiscount) {
+      lines.push(`Tối đa ${this.formatMoney(coupon.maxDiscount)}đ`);
+    }
+
+    if (coupon.minOrderAmount) {
+      lines.push(`Cho đơn từ ${this.formatMoney(coupon.minOrderAmount)}đ`);
+    }
+
+    return lines.join('\n');
+  }
+
+  private renderCouponApplyScope(
+    products: Array<{
+      productVariant: {
+        name: string;
+        product: { name: string; isDeleted: boolean; isActive: boolean };
+        isDeleted: boolean;
+        active: boolean;
+      };
+    }>,
+  ) {
+    const availableProducts = products.filter(
+      ({ productVariant }) =>
+        !productVariant.isDeleted &&
+        productVariant.active &&
+        !productVariant.product.isDeleted &&
+        productVariant.product.isActive,
+    );
+
+    if (!availableProducts.length) return 'Tất cả sản phẩm';
+
+    const names = availableProducts.map(
+      ({ productVariant }) => `${productVariant.product.name} - ${productVariant.name}`,
+    );
+    const visibleNames = names.slice(0, 5);
+    const remainingCount = names.length - visibleNames.length;
+
+    if (remainingCount > 0) {
+      visibleNames.push(`và ${remainingCount} sản phẩm khác`);
+    }
+
+    return visibleNames.map((name) => `- ${name}`).join('\n');
+  }
+
+  private renderRemainingUsage(usageLimit: number | null, usedCount: number) {
+    if (usageLimit === null) return 'Không giới hạn';
+    return String(Math.max(usageLimit - usedCount, 0));
+  }
+
+  private renderExpiredAt(expiredAt: Date | null) {
+    if (!expiredAt) return 'Không giới hạn';
+
+    return new Intl.DateTimeFormat('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(expiredAt);
+  }
+
+  private formatMoney(value: Prisma.Decimal) {
+    return Number(value).toLocaleString('vi-VN');
+  }
+
+  private formatNumber(value: Prisma.Decimal) {
+    return Number(value).toLocaleString('vi-VN');
   }
 
   private renderTicketStatusMessage(

@@ -71,6 +71,12 @@ enum AuditAction {
   LOGOUT
   PAYMENT_WEBHOOK
   DELIVERY_SENT
+  COUPON_CREATE
+  COUPON_UPDATE
+  COUPON_DELETE
+  COUPON_DISABLE
+  REVIEW_HIDE
+  REVIEW_SHOW
 }
 
 enum PaymentProvider {
@@ -80,6 +86,11 @@ enum PaymentProvider {
   VNPAY
 }
 
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
 enum AdminLoginTokenStatus {
   PENDING
   USED
@@ -87,25 +98,36 @@ enum AdminLoginTokenStatus {
   REVOKED
 }
 
+enum ActivityLogType {
+  COUPON_APPLIED
+  REVIEW_CREATED
+  REVIEW_UPDATED
+}
+
 model User {
-  id                 String            @id @default(uuid()) @db.Uuid
-  telegramId         BigInt?           @unique @map("telegram_id") @db.BigInt
-  username           String?           @db.VarChar(100)
-  fullName           String?           @map("full_name") @db.VarChar(255)
-  phone              String?           @db.VarChar(20)
-  email              String?           @db.VarChar(255)
-  status             UserStatus        @default(ACTIVE)
-  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted          Boolean           @default(false) @map("is_deleted")
-  roles              UserRole[]
-  reservedInventories Inventory[]      @relation("InventoryReservedBy")
-  orders             Order[]
-  tickets            Ticket[]
-  notifications      Notification[]
-  refreshTokens      RefreshToken[]
-  auditLogs          AuditLog[]        @relation("AuditActor")
-  adminLoginTokens   AdminLoginToken[]
+  id                  String            @id @default(uuid()) @db.Uuid
+  telegramId          BigInt?           @unique @map("telegram_id") @db.BigInt
+  username            String?           @db.VarChar(100)
+  fullName            String?           @map("full_name") @db.VarChar(255)
+  phone               String?           @db.VarChar(20)
+  email               String?           @db.VarChar(255)
+  status              UserStatus        @default(ACTIVE)
+  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted           Boolean           @default(false) @map("is_deleted")
+  roles               UserRole[]
+  reservedInventories Inventory[]       @relation("InventoryReservedBy")
+  orders              Order[]
+  tickets             Ticket[]
+  notifications       Notification[]
+  refreshTokens       RefreshToken[]
+  auditLogs           AuditLog[]        @relation("AuditActor")
+  adminLoginTokens    AdminLoginToken[]
+  couponsCreated      Coupon[]
+  couponUsers         CouponUser[]
+  couponUsages        CouponUsage[]
+  reviews             Review[]
+  activityLogs        ActivityLog[]
 
   @@index([telegramId], map: "idx_users_telegram")
   @@index([status], map: "idx_users_status")
@@ -174,19 +196,23 @@ model Product {
 }
 
 model ProductVariant {
-  id           String      @id @default(uuid()) @db.Uuid
-  productId    String      @map("product_id") @db.Uuid
-  name         String      @db.VarChar(255)
-  durationDays Int?        @map("duration_days")
-  sellPrice    Decimal     @map("sell_price") @db.Decimal(18, 2)
-  warrantyDays Int?        @map("warranty_days")
-  active       Boolean     @default(true)
-  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted    Boolean     @default(false) @map("is_deleted")
-  product      Product     @relation(fields: [productId], references: [id])
-  inventories  Inventory[]
-  orderItems   OrderItem[]
+  id             String          @id @default(uuid()) @db.Uuid
+  productId      String          @map("product_id") @db.Uuid
+  name           String          @db.VarChar(255)
+  durationDays   Int?            @map("duration_days")
+  sellPrice      Decimal         @map("sell_price") @db.Decimal(18, 2)
+  warrantyDays   Int?            @map("warranty_days")
+  active         Boolean         @default(true)
+  averageRating  Decimal         @default(0) @map("average_rating") @db.Decimal(3, 2)
+  reviewCount    Int             @default(0) @map("review_count")
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted      Boolean         @default(false) @map("is_deleted")
+  product        Product         @relation(fields: [productId], references: [id])
+  inventories    Inventory[]
+  orderItems     OrderItem[]
+  couponProducts CouponProduct[]
+  reviews        Review[]
 
   @@index([productId], map: "idx_product_variants_product")
   @@index([active, isDeleted], map: "idx_product_variants_active_deleted")
@@ -228,21 +254,110 @@ model Order {
   subtotal      Decimal       @default(0) @db.Decimal(18, 2)
   discount      Decimal       @default(0) @db.Decimal(18, 2)
   totalAmount   Decimal       @default(0) @map("total_amount") @db.Decimal(18, 2)
+  couponId      String?       @map("coupon_id") @db.Uuid
   status        OrderStatus   @default(PENDING)
   paymentStatus PaymentStatus @default(PENDING) @map("payment_status")
   createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   isDeleted     Boolean       @default(false) @map("is_deleted")
   user          User          @relation(fields: [userId], references: [id])
+  coupon        Coupon?       @relation(fields: [couponId], references: [id])
   items         OrderItem[]
   payments      Payment[]
   tickets       Ticket[]
+  couponUsages  CouponUsage[]
+  reviews       Review[]
 
   @@index([userId], map: "idx_orders_user")
+  @@index([couponId], map: "idx_orders_coupon")
   @@index([status], map: "idx_orders_status")
   @@index([paymentStatus], map: "idx_orders_payment_status")
   @@index([createdAt(sort: Desc)], map: "idx_orders_created")
   @@map("orders")
+}
+
+model Coupon {
+  id             String          @id @default(uuid()) @db.Uuid
+  code           String          @unique @db.VarChar(100)
+  name           String          @db.VarChar(255)
+  description    String?
+  discountType   DiscountType    @map("discount_type")
+  discountValue  Decimal         @map("discount_value") @db.Decimal(18, 2)
+  maxDiscount    Decimal?        @map("max_discount") @db.Decimal(18, 2)
+  minOrderAmount Decimal?        @map("min_order_amount") @db.Decimal(18, 2)
+  usageLimit     Int?            @map("usage_limit")
+  usedCount      Int             @default(0) @map("used_count")
+  startsAt       DateTime?       @map("starts_at") @db.Timestamptz(6)
+  endsAt         DateTime?       @map("ends_at") @db.Timestamptz(6)
+  isActive       Boolean         @default(true) @map("is_active")
+  createdBy      String?         @map("created_by") @db.Uuid
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted      Boolean         @default(false) @map("is_deleted")
+  creator        User?           @relation(fields: [createdBy], references: [id])
+  products       CouponProduct[]
+  users          CouponUser[]
+  usages         CouponUsage[]
+  orders         Order[]
+
+  @@index([code], map: "idx_coupons_code")
+  @@index([isActive], map: "idx_coupons_active")
+  @@index([startsAt], map: "idx_coupons_starts")
+  @@index([endsAt], map: "idx_coupons_ends")
+  @@map("coupons")
+}
+
+model CouponProduct {
+  id               String         @id @default(uuid()) @db.Uuid
+  couponId         String         @map("coupon_id") @db.Uuid
+  productVariantId String         @map("product_variant_id") @db.Uuid
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted        Boolean        @default(false) @map("is_deleted")
+  coupon           Coupon         @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Cascade)
+
+  @@unique([couponId, productVariantId], map: "uq_coupon_products_coupon_variant")
+  @@index([couponId], map: "idx_coupon_products_coupon")
+  @@index([productVariantId], map: "idx_coupon_products_variant")
+  @@map("coupon_products")
+}
+
+model CouponUser {
+  id        String   @id @default(uuid()) @db.Uuid
+  couponId  String   @map("coupon_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  coupon    Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([couponId, userId], map: "uq_coupon_users_coupon_user")
+  @@index([couponId], map: "idx_coupon_users_coupon")
+  @@index([userId], map: "idx_coupon_users_user")
+  @@map("coupon_users")
+}
+
+model CouponUsage {
+  id             String   @id @default(uuid()) @db.Uuid
+  couponId       String   @map("coupon_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  orderId        String   @map("order_id") @db.Uuid
+  discountAmount Decimal  @map("discount_amount") @db.Decimal(18, 2)
+  usedAt         DateTime @default(now()) @map("used_at") @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted      Boolean  @default(false) @map("is_deleted")
+  coupon         Coupon   @relation(fields: [couponId], references: [id])
+  user           User     @relation(fields: [userId], references: [id])
+  order          Order    @relation(fields: [orderId], references: [id])
+
+  @@unique([couponId, orderId], map: "uq_coupon_usages_coupon_order")
+  @@index([couponId], map: "idx_coupon_usages_coupon")
+  @@index([userId], map: "idx_coupon_usages_user")
+  @@index([orderId], map: "idx_coupon_usages_order")
+  @@map("coupon_usages")
 }
 
 model OrderItem {
@@ -324,6 +439,47 @@ model Ticket {
   @@index([orderId], map: "idx_tickets_order")
   @@index([status], map: "idx_tickets_status")
   @@map("tickets")
+}
+
+model Review {
+  id               String         @id @default(uuid()) @db.Uuid
+  orderId          String         @unique @map("order_id") @db.Uuid
+  userId           String         @map("user_id") @db.Uuid
+  productVariantId String         @map("product_variant_id") @db.Uuid
+  rating           Int
+  comment          String?
+  isHidden         Boolean        @default(false) @map("is_hidden")
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted        Boolean        @default(false) @map("is_deleted")
+  order            Order          @relation(fields: [orderId], references: [id])
+  user             User           @relation(fields: [userId], references: [id])
+  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id])
+
+  @@index([userId], map: "idx_reviews_user")
+  @@index([productVariantId], map: "idx_reviews_variant")
+  @@index([rating], map: "idx_reviews_rating")
+  @@index([isHidden], map: "idx_reviews_hidden")
+  @@map("reviews")
+}
+
+model ActivityLog {
+  id         String          @id @default(uuid()) @db.Uuid
+  userId     String?         @map("user_id") @db.Uuid
+  type       ActivityLogType
+  entityName String          @map("entity_name") @db.VarChar(100)
+  entityId   String?         @map("entity_id") @db.Uuid
+  metadata   Json?
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted  Boolean         @default(false) @map("is_deleted")
+  user       User?           @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "idx_activity_logs_user")
+  @@index([type], map: "idx_activity_logs_type")
+  @@index([entityName, entityId], map: "idx_activity_logs_entity")
+  @@index([createdAt(sort: Desc)], map: "idx_activity_logs_created")
+  @@map("activity_logs")
 }
 
 model Notification {

@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Clipboard, Package, ReceiptText, Send, ShieldCheck, X } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Clipboard, Package, ReceiptText, Send, ShieldCheck, Star, X } from "lucide-react";
 import {
+  createReview,
   createWarrantyTicket,
   getOrderDetail,
   getOrderHistory,
+  updateReview,
   type OrderDetail,
   type OrderHistoryItem,
 } from "@/features/orders/order-service";
@@ -27,6 +29,9 @@ const text = {
   warrantyPlaceholder: "Mô tả lỗi bạn gặp phải để admin kiểm tra và hỗ trợ.",
   warrantyCreated: "Đã gửi yêu cầu bảo hành",
   warrantyFailed: "Không gửi được yêu cầu bảo hành",
+  review: "Đánh giá",
+  reviewCreated: "Đã gửi đánh giá",
+  reviewFailed: "Không gửi được đánh giá",
 };
 
 type WarrantyTarget = {
@@ -39,6 +44,15 @@ type WarrantyTarget = {
   warrantyDays: number;
 };
 
+type ReviewTarget = {
+  orderId: string;
+  orderNo: string;
+  reviewId?: string;
+  productVariantId?: string;
+  rating: number;
+  comment: string;
+};
+
 export function OrdersView({ initData }: { initData?: string }) {
   const [page, setPage] = useState(1);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -47,6 +61,8 @@ export function OrdersView({ initData }: { initData?: string }) {
   const [warrantyReason, setWarrantyReason] = useState("");
   const [submittingWarranty, setSubmittingWarranty] = useState(false);
   const [warrantyMessage, setWarrantyMessage] = useState<string | null>(null);
+  const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null);
+  const [submittingReview, setSubmittingReview] = useState(false);
   const ordersQuery = useQuery({
     queryKey: ["order-history", initData, page],
     queryFn: () => getOrderHistory(initData!, page, PAGE_SIZE),
@@ -95,6 +111,38 @@ export function OrdersView({ initData }: { initData?: string }) {
     }
   }
 
+  async function submitReview() {
+    if (!initData || !reviewTarget || reviewTarget.rating < 1) return;
+
+    setSubmittingReview(true);
+    setWarrantyMessage(null);
+    try {
+      if (reviewTarget.reviewId) {
+        await updateReview(reviewTarget.reviewId, {
+          initData,
+          rating: reviewTarget.rating,
+          comment: reviewTarget.comment,
+        });
+      } else {
+        await createReview({
+          initData,
+          orderId: reviewTarget.orderId,
+          productVariantId: reviewTarget.productVariantId,
+          rating: reviewTarget.rating,
+          comment: reviewTarget.comment,
+        });
+      }
+      setWarrantyMessage(text.reviewCreated);
+      setReviewTarget(null);
+      await detailQuery.refetch();
+      await ordersQuery.refetch();
+    } catch (error) {
+      setWarrantyMessage(error instanceof Error ? error.message : text.reviewFailed);
+    } finally {
+      setSubmittingReview(false);
+    }
+  }
+
   if (!initData) {
     return <EmptyState title={text.title} text={text.telegramRequired} />;
   }
@@ -109,6 +157,7 @@ export function OrdersView({ initData }: { initData?: string }) {
           onCopy={copyValue}
           warrantyMessage={warrantyMessage}
           onWarranty={openWarranty}
+          onReview={setReviewTarget}
           onBack={() => setSelectedOrderId(null)}
         />
         {warrantyTarget ? (
@@ -120,6 +169,15 @@ export function OrdersView({ initData }: { initData?: string }) {
             onReasonChange={setWarrantyReason}
             onSubmit={submitWarranty}
             onClose={() => setWarrantyTarget(null)}
+          />
+        ) : null}
+        {reviewTarget ? (
+          <ReviewModal
+            target={reviewTarget}
+            submitting={submittingReview}
+            onChange={setReviewTarget}
+            onSubmit={submitReview}
+            onClose={() => setReviewTarget(null)}
           />
         ) : null}
       </>
@@ -261,6 +319,7 @@ function OrderDetailPanel({
   onCopy,
   warrantyMessage,
   onWarranty,
+  onReview,
   onBack,
 }: {
   order?: OrderDetail;
@@ -269,6 +328,7 @@ function OrderDetailPanel({
   onCopy: (key: string, value?: string | null) => void;
   warrantyMessage: string | null;
   onWarranty: (target: WarrantyTarget) => void;
+  onReview: (target: ReviewTarget) => void;
   onBack: () => void;
 }) {
   if (loading || !order) {
@@ -308,6 +368,25 @@ function OrderDetailPanel({
           <InfoRow label="Mã CK" value={order.paymentContent || "-"} />
           <InfoRow label="Thời gian" value={formatDateTime(order.createdAt)} />
         </dl>
+        {order.canReview || order.review ? (
+          <button
+            type="button"
+            onClick={() =>
+              onReview({
+                orderId: order.id,
+                orderNo: order.orderNo,
+                reviewId: order.review?.id,
+                productVariantId: order.products[0]?.variantId,
+                rating: order.review?.rating || 5,
+                comment: order.review?.comment || "",
+              })
+            }
+            className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-amber-300/25 bg-amber-300/10 px-3 text-sm font-bold text-amber-100 transition hover:bg-amber-300/20"
+          >
+            <Star className="h-4 w-4 fill-current" />
+            {order.review ? `Đã đánh giá ${order.review.rating}/5 - Sửa đánh giá` : "Đánh giá đơn hàng"}
+          </button>
+        ) : null}
       </div>
 
       {order.products.map((product, productIndex) => (
@@ -526,6 +605,83 @@ function WarrantyModal({
           >
             <Send className="h-4 w-4" />
             {submitting ? "Đang gửi..." : "Gửi yêu cầu bảo hành"}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ReviewModal({
+  target,
+  submitting,
+  onChange,
+  onSubmit,
+  onClose,
+}: {
+  target: ReviewTarget;
+  submitting: boolean;
+  onChange: (target: ReviewTarget) => void;
+  onSubmit: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[2147483647] flex items-center justify-center overflow-y-auto bg-black/70 px-4 py-[max(24px,env(safe-area-inset-top))] backdrop-blur-sm">
+      <section className="mini-rise w-full max-w-md rounded-2xl border border-white/10 bg-[#071008] shadow-2xl shadow-black/60">
+        <div className="border-b border-white/10 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-200">{text.review}</p>
+              <h3 className="mt-1 break-words text-lg font-bold text-white">{target.orderNo}</h3>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.045] text-zinc-200"
+              aria-label="Đóng"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-4 p-4">
+          <div className="flex justify-center gap-1">
+            {Array.from({ length: 5 }).map((_, index) => {
+              const value = index + 1;
+              const active = value <= target.rating;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => onChange({ ...target, rating: value })}
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg border transition ${
+                    active
+                      ? "border-amber-300/40 bg-amber-300/15 text-amber-200"
+                      : "border-white/10 bg-black/25 text-zinc-500"
+                  }`}
+                  aria-label={`${value} sao`}
+                >
+                  <Star className={`h-6 w-6 ${active ? "fill-current" : ""}`} />
+                </button>
+              );
+            })}
+          </div>
+          <textarea
+            value={target.comment}
+            onChange={(event) => onChange({ ...target, comment: event.target.value })}
+            placeholder="Chia sẻ trải nghiệm sử dụng dịch vụ..."
+            rows={5}
+            className="min-h-32 w-full resize-none rounded-lg border border-white/10 bg-black/35 p-3 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-600 focus:border-amber-300/50"
+          />
+          <button
+            type="button"
+            disabled={submitting || target.rating < 1}
+            onClick={onSubmit}
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-amber-300 text-sm font-bold text-black transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Send className="h-4 w-4" />
+            {submitting ? "Đang gửi..." : "Gửi đánh giá"}
           </button>
         </div>
       </section>

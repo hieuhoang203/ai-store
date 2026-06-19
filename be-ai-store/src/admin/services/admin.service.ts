@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { Prisma, TicketStatus } from '../../../generated/prisma/client.js';
+import { AuditAction, Prisma, TicketStatus } from '../../../generated/prisma/client.js';
 import { InventoryStatus, OrderStatus, PaymentStatus } from '../models/admin-enums.model';
 import { PrismaService } from '../../database/prisma.service';
 import { InventoryPasswordService } from '../../inventories/inventory-password.service';
@@ -64,6 +64,7 @@ export class AdminService {
     const config = this.getConfig(entityKey);
     const roleId = entityKey === 'users' ? payload.roleId : undefined;
     const data = this.sanitizePayload(config, payload, 'create');
+    this.normalizeCouponPayload(entityKey, data);
     this.encryptInventoryPassword(entityKey, data);
     const record = await this.repository.create(config, data);
 
@@ -71,6 +72,7 @@ export class AdminService {
       await this.assignUserRole(String((record as Record<string, unknown>).id), String(roleId));
     }
     await this.announceCreatedEntity(entityKey, record);
+    await this.auditCouponChange(entityKey, AuditAction.COUPON_CREATE, null, record);
 
     const serialized = this.serializeRecord(config, record);
     this.decryptInventoryPassword(entityKey, serialized);
@@ -83,6 +85,8 @@ export class AdminService {
     const previousRecord = entityKey === 'tickets' ? await this.repository.detail(config, recordId) : null;
     const closeReason = typeof payload.closeReason === 'string' ? payload.closeReason : undefined;
     const data = this.sanitizePayload(config, payload, 'update');
+    const couponPreviousRecord = entityKey === 'coupons' ? await this.repository.detail(config, recordId) : null;
+    this.normalizeCouponPayload(entityKey, data);
     this.encryptInventoryPassword(entityKey, data);
     const record = await this.repository.update(config, recordId, data);
 
@@ -90,6 +94,12 @@ export class AdminService {
       await this.assignUserRole(recordId, roleId ? String(roleId) : null);
     }
     await this.announceTicketStatusChanged(entityKey, previousRecord, record, closeReason);
+    await this.auditCouponChange(
+      entityKey,
+      data.isActive === false ? AuditAction.COUPON_DISABLE : AuditAction.COUPON_UPDATE,
+      couponPreviousRecord,
+      record,
+    );
 
     const serialized = this.serializeRecord(config, record);
     this.decryptInventoryPassword(entityKey, serialized);
@@ -98,7 +108,10 @@ export class AdminService {
 
   async remove(entityKey: string, recordId: string) {
     const config = this.getConfig(entityKey);
-    return this.serializeRecord(config, await this.repository.remove(config, recordId));
+    const previousRecord = entityKey === 'coupons' ? await this.repository.detail(config, recordId) : null;
+    const removed = await this.repository.remove(config, recordId);
+    await this.auditCouponChange(entityKey, AuditAction.COUPON_DELETE, previousRecord, removed);
+    return this.serializeRecord(config, removed);
   }
 
   async dashboard() {
@@ -363,6 +376,33 @@ export class AdminService {
     record.encryptedPassword = this.inventoryPasswordService.decrypt(record.encryptedPassword);
   }
 
+  private normalizeCouponPayload(entityKey: string, data: Record<string, unknown>) {
+    if (entityKey !== 'coupons') return;
+    if (typeof data.code === 'string') {
+      data.code = data.code.trim().toUpperCase();
+    }
+  }
+
+  private async auditCouponChange(
+    entityKey: string,
+    action: AuditAction,
+    oldData: unknown,
+    newData: unknown,
+  ) {
+    if (entityKey !== 'coupons') return;
+
+    const entityId = String((newData as Record<string, unknown>)?.id || (oldData as Record<string, unknown>)?.id || '');
+    await this.prisma.auditLog.create({
+      data: {
+        entityName: 'coupon',
+        entityId: entityId || null,
+        action,
+        oldData: oldData ? (this.serialize(oldData) as Prisma.InputJsonValue) : undefined,
+        newData: newData ? (this.serialize(newData) as Prisma.InputJsonValue) : undefined,
+      },
+    });
+  }
+
   private async announceCreatedEntity(entityKey: string, record: unknown) {
     const id = String((record as Record<string, unknown>).id || '');
     if (!id) return;
@@ -379,6 +419,11 @@ export class AdminService {
 
     if (entityKey === 'inventories') {
       await this.notificationsService.announceInventoryRestocked(id, 1);
+      return;
+    }
+
+    if (entityKey === 'coupons') {
+      await this.notificationsService.announceCouponCreated(id);
     }
   }
 

@@ -62,6 +62,12 @@ export enum AuditAction {
   LOGOUT = 'LOGOUT',
   PAYMENT_WEBHOOK = 'PAYMENT_WEBHOOK',
   DELIVERY_SENT = 'DELIVERY_SENT',
+  COUPON_CREATE = 'COUPON_CREATE',
+  COUPON_UPDATE = 'COUPON_UPDATE',
+  COUPON_DELETE = 'COUPON_DELETE',
+  COUPON_DISABLE = 'COUPON_DISABLE',
+  REVIEW_HIDE = 'REVIEW_HIDE',
+  REVIEW_SHOW = 'REVIEW_SHOW',
 }
 
 export enum AdminLoginTokenStatus {
@@ -69,4 +75,15 @@ export enum AdminLoginTokenStatus {
   USED = 'USED',
   EXPIRED = 'EXPIRED',
   REVOKED = 'REVOKED',
+}
+
+export enum DiscountType {
+  PERCENT = 'PERCENT',
+  FIXED = 'FIXED',
+}
+
+export enum ActivityLogType {
+  COUPON_APPLIED = 'COUPON_APPLIED',
+  REVIEW_CREATED = 'REVIEW_CREATED',
+  REVIEW_UPDATED = 'REVIEW_UPDATED',
 }

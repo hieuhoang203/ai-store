@@ -20,6 +20,8 @@ export type CheckoutResult = {
   order: {
     id: string;
     orderNo: string;
+    subtotal?: string;
+    discount?: string;
     totalAmount: string;
   };
   payment: {
@@ -30,6 +32,21 @@ export type CheckoutResult = {
     qrContent: CheckoutPaymentQr | null;
   };
   reused?: boolean;
+};
+
+export type CouponValidationResult = {
+  success: boolean;
+  coupon: {
+    id: string;
+    code: string;
+    name: string;
+    discountType: string;
+    discountValue: string;
+  };
+  subtotal: string;
+  eligibleSubtotal: string;
+  discountAmount: string;
+  finalAmount: string;
 };
 
 export type PaymentStatusResult = {
@@ -88,13 +105,23 @@ export type OrderDetail = {
   orderNo: string;
   status: string;
   paymentStatus: string;
+  subtotal?: string;
+  discount?: string;
   totalAmount: string;
   createdAt: string;
   paidAt?: string | null;
   bankName?: string | null;
   paymentContent?: string | null;
   warrantyDays?: number | null;
+  canReview?: boolean;
+  review?: {
+    id: string;
+    rating: number;
+    comment?: string | null;
+    isHidden: boolean;
+  } | null;
   products: Array<{
+    variantId: string;
     productName: string;
     variantName: string;
     quantity: number;
@@ -107,6 +134,17 @@ export type OrderDetail = {
       deliveredAt?: string | null;
     }>;
   }>;
+};
+
+export type ReviewResult = {
+  id: string;
+  orderId: string;
+  productVariantId: string;
+  rating: number;
+  comment?: string | null;
+  isHidden: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type ProfileSummary = {
@@ -146,10 +184,27 @@ export type MyTicket = {
   } | null;
 };
 
-export async function checkout(initData: string, items: CartItem[]) {
+export async function checkout(initData: string, items: CartItem[], couponCode?: string | null) {
   try {
     const response = await api.post<CheckoutResult>("/orders/checkout", {
       initData,
+      couponCode: couponCode || undefined,
+      items: items.map((item) => ({
+        variantId: item.variantId,
+        quantity: item.quantity,
+      })),
+    });
+    return response.data;
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error));
+  }
+}
+
+export async function validateCoupon(initData: string, code: string, items: CartItem[]) {
+  try {
+    const response = await api.post<CouponValidationResult>("/checkout/validate-coupon", {
+      initData,
+      code,
       items: items.map((item) => ({
         variantId: item.variantId,
         quantity: item.quantity,
@@ -195,6 +250,29 @@ export async function createWarrantyTicket(input: {
 
 export async function getMyTickets(initData: string) {
   const response = await api.post<MyTicket[]>("/tickets/my", { initData });
+  return response.data;
+}
+
+export async function createReview(input: {
+  initData: string;
+  orderId: string;
+  productVariantId?: string;
+  rating: number;
+  comment?: string;
+}) {
+  const response = await api.post<ReviewResult>("/reviews", input);
+  return response.data;
+}
+
+export async function updateReview(
+  reviewId: string,
+  input: {
+    initData: string;
+    rating?: number;
+    comment?: string;
+  },
+) {
+  const response = await api.put<ReviewResult>(`/reviews/${reviewId}`, input);
   return response.data;
 }
 

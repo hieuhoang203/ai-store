@@ -1,9 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { ArrowLeft, Clock, PackageCheck, Plus, ShieldCheck } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft, Clock, PackageCheck, Plus, ShieldCheck, Star } from "lucide-react";
 import { useState } from "react";
-import type { Product, ProductVariant } from "@/features/products/product-service";
+import { getProductReviews, type Product, type ProductReview, type ProductVariant } from "@/features/products/product-service";
 import type { CartItem } from "@/store/cart-store";
 import { ProductDescription } from "./product-description";
 import { SectionTitle } from "./section-title";
@@ -133,6 +134,11 @@ function ProductDetail({
   onBack: () => void;
   onAdd: (item: CartItem) => void;
 }) {
+  const reviewsQuery = useQuery({
+    queryKey: ["product-reviews", product.id],
+    queryFn: () => getProductReviews(product.id),
+  });
+
   return (
     <section className="mini-fade space-y-4">
       <div className="sticky top-0 z-10 -mx-4 border-b border-white/10 bg-[#050805]/95 px-4 pb-3 pt-1 backdrop-blur">
@@ -175,6 +181,12 @@ function ProductDetail({
           </div>
         )}
       </div>
+      <ProductReviewsPanel
+        averageRating={reviewsQuery.data?.averageRating || "0.0"}
+        reviewCount={reviewsQuery.data?.reviewCount || 0}
+        reviews={reviewsQuery.data?.data || []}
+        loading={reviewsQuery.isLoading}
+      />
     </section>
   );
 }
@@ -209,6 +221,9 @@ function VariantCard({
               <InfoPill icon={<ShieldCheck className="h-3 w-3" />} label={`${variant.warrantyDays} ${text.days} ${text.warranty.toLowerCase()}`} />
             ) : null}
             <InfoPill icon={<PackageCheck className="h-3 w-3" />} label={getStockLabel(availableStock)} />
+            {variant.reviewCount ? (
+              <InfoPill icon={<Star className="h-3 w-3 fill-current" />} label={`${Number(variant.averageRating || 0).toFixed(1)} (${variant.reviewCount})`} />
+            ) : null}
           </div>
         </div>
         <div className="shrink-0 text-right">
@@ -254,6 +269,55 @@ function formatPriceRange(variants: ProductVariant[]) {
 
 function formatMoney(value: string | number) {
   return Number(value).toLocaleString("vi-VN");
+}
+
+function ProductReviewsPanel({
+  averageRating,
+  reviewCount,
+  reviews,
+  loading,
+}: {
+  averageRating: string;
+  reviewCount: number;
+  reviews: ProductReview[];
+  loading: boolean;
+}) {
+  return (
+    <section className="space-y-3 rounded-xl border border-white/10 bg-white/[0.045] p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold text-white">Đánh giá khách hàng</p>
+          <p className="mt-1 text-xs font-semibold text-zinc-500">{reviewCount} lượt đánh giá</p>
+        </div>
+        <span className="inline-flex items-center gap-1 rounded-full bg-amber-300/12 px-2.5 py-1 text-sm font-bold text-amber-200">
+          <Star className="h-4 w-4 fill-current" />
+          {averageRating}
+        </span>
+      </div>
+      {loading ? (
+        <div className="h-16 animate-pulse rounded-lg bg-black/25" />
+      ) : reviews.length ? (
+        <div className="space-y-2">
+          {reviews.map((review) => (
+            <article key={review.id} className="rounded-lg border border-white/10 bg-black/25 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate text-sm font-bold text-white">{review.userName}</p>
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-200">
+                  <Star className="h-3.5 w-3.5 fill-current" />
+                  {review.rating}/5
+                </span>
+              </div>
+              {review.comment ? <p className="mt-2 text-sm leading-5 text-zinc-300">{review.comment}</p> : null}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-lg border border-white/10 bg-black/25 p-3 text-sm font-semibold text-zinc-400">
+          Chưa có đánh giá cho sản phẩm này.
+        </p>
+      )}
+    </section>
+  );
 }
 
 function getStockLabel(availableStock?: number) {

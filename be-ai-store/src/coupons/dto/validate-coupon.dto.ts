@@ -1,8 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsArray, IsInt, IsOptional, IsString, IsUUID, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
+import { IsArray, IsInt, IsString, IsUUID, Min, ValidateNested } from 'class-validator';
 
-export class CheckoutItemDto {
+export class ValidateCouponItemDto {
   @ApiProperty()
   @IsUUID()
   variantId!: string;
@@ -13,19 +13,18 @@ export class CheckoutItemDto {
   quantity!: number;
 }
 
-export class CheckoutDto {
+export class ValidateCouponDto {
   @ApiProperty({ description: 'Telegram Mini App initData string' })
   @IsString()
   initData!: string;
 
-  @ApiProperty({ type: [CheckoutItemDto] })
+  @ApiProperty()
+  @IsString()
+  code!: string;
+
+  @ApiProperty({ type: [ValidateCouponItemDto] })
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => CheckoutItemDto)
-  items!: CheckoutItemDto[];
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  couponCode?: string;
+  @Type(() => ValidateCouponItemDto)
+  items!: ValidateCouponItemDto[];
 }

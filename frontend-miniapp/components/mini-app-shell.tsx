@@ -6,6 +6,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   checkout,
   getPaymentStatus,
+  validateCoupon,
+  type CouponValidationResult,
   type CheckoutResult,
 } from "@/features/orders/order-service";
 import { getProducts } from "@/features/products/product-service";
@@ -38,6 +40,9 @@ export function MiniAppShell() {
   const [activeTab, setActiveTab] = useState<TabKey>("home");
   const [processing, setProcessing] = useState(false);
   const [paymentResult, setPaymentResult] = useState<CheckoutResult | null>(null);
+  const [couponCode, setCouponCode] = useState("");
+  const [couponResult, setCouponResult] = useState<CouponValidationResult | null>(null);
+  const [couponProcessing, setCouponProcessing] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
   const { data: products = [], isLoading } = useQuery({ queryKey: ["products"], queryFn: getProducts });
   const { items, addItem, removeItem, updateQuantity, clear } = useCartStore();
@@ -115,7 +120,42 @@ export function MiniAppShell() {
     }
 
     addItem(item);
+    setCouponResult(null);
     showToast({ type: "success", message: text.addedToCart });
+  }
+
+  function handleRemoveItem(variantId: string) {
+    removeItem(variantId);
+    setCouponResult(null);
+  }
+
+  function handleQuantityChange(variantId: string, quantity: number) {
+    updateQuantity(variantId, quantity);
+    setCouponResult(null);
+  }
+
+  async function applyCoupon() {
+    if (!initData) {
+      showToast({ type: "error", message: text.telegramRequired });
+      return;
+    }
+    if (!couponCode.trim()) {
+      showToast({ type: "error", message: "Vui lòng nhập mã giảm giá" });
+      return;
+    }
+
+    setCouponProcessing(true);
+    try {
+      const result = await validateCoupon(initData, couponCode, items);
+      setCouponCode(result.coupon.code);
+      setCouponResult(result);
+      showToast({ type: "success", message: `Đã áp dụng ${result.coupon.code}` });
+    } catch (error) {
+      setCouponResult(null);
+      showToast({ type: "error", message: error instanceof Error ? error.message : text.checkoutFailed });
+    } finally {
+      setCouponProcessing(false);
+    }
   }
 
   async function submitCheckout() {
@@ -126,7 +166,7 @@ export function MiniAppShell() {
 
     setProcessing(true);
     try {
-      const result = await checkout(initData, items);
+      const result = await checkout(initData, items, couponResult?.coupon.code);
       setPaymentResult(result);
       window.sessionStorage.setItem(PAYMENT_RESULT_STORAGE_KEY, JSON.stringify(result));
       showToast({ type: "success", message: result.reused ? text.qrReused : text.qrCreated });
@@ -169,10 +209,19 @@ export function MiniAppShell() {
             processing={processing}
             paymentResult={paymentResult}
             paymentStatus={paymentStatus || null}
-            onRemove={removeItem}
-            onQuantityChange={updateQuantity}
+            couponCode={couponCode}
+            couponResult={couponResult}
+            couponProcessing={couponProcessing}
+            onRemove={handleRemoveItem}
+            onQuantityChange={handleQuantityChange}
             onCheckout={submitCheckout}
             onRenewPayment={submitCheckout}
+            onCouponCodeChange={setCouponCode}
+            onApplyCoupon={applyCoupon}
+            onClearCoupon={() => {
+              setCouponCode("");
+              setCouponResult(null);
+            }}
           />
         ) : null}
 

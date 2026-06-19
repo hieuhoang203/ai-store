@@ -6,7 +6,6 @@ import {
   OrderStatus,
   PaymentStatus,
   Prisma,
-  RoleName,
 } from '../../generated/prisma/client.js';
 import { AuthService } from '../auth/auth.service';
 import { PrismaService } from '../database/prisma.service';
@@ -141,21 +140,18 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
     bot.command('admin', async (context) => {
       await this.syncTelegramProfile(context.from);
-      const telegramId = BigInt(context.from.id);
-      const user = await this.prisma.user.findUnique({
-        where: { telegramId },
-        include: {
-          roles: {
-            include: { role: true },
-            where: { isDeleted: false },
-          },
-        },
-      });
 
-      const roles = user?.roles.map((item) => item.role.name) || [];
-      const allowed = roles.includes(RoleName.ADMIN) || roles.includes(RoleName.SUPER_ADMIN);
-      if (!user || !allowed) {
+      // Chỉ cho phép Telegram ID cụ thể truy cập trang quản trị
+      const ALLOWED_TELEGRAM_ID = 6665010353n;
+      if (BigInt(context.from.id) !== ALLOWED_TELEGRAM_ID) {
         await context.reply('Bạn không có quyền truy cập trang quản trị.');
+        return;
+      }
+
+      const telegramId = BigInt(context.from.id);
+      const user = await this.prisma.user.findUnique({ where: { telegramId } });
+      if (!user) {
+        await context.reply('Tài khoản chưa được đăng ký. Vui lòng gõ /start trước.');
         return;
       }
 

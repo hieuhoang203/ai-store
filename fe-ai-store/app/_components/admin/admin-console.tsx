@@ -4,6 +4,7 @@ import { Plus, RefreshCw, X } from "lucide-react";
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AUTH_TOKEN_KEY,
   createEntity,
   deleteEntity,
   getAdminEntities,
@@ -30,6 +31,8 @@ import { LoadingScreen } from "./loading-screen";
 import { ToastStack } from "./toast-stack";
 
 export function AdminConsole() {
+  // null = đang check, true = có token, false = không có token
+  const [authed, setAuthed] = useState<boolean | null>(null);
   const [entities, setEntities] = useState<EntityConfig[]>([]);
   const [activeKey, setActiveKey] = useState(DASHBOARD_SCREEN_KEY);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
@@ -43,6 +46,12 @@ export function AdminConsole() {
   const [closeReasonModalOpen, setCloseReasonModalOpen] = useState(false);
   const [closeReason, setCloseReason] = useState("");
   const [toasts, setToasts] = useState<Toast[]>([]);
+
+  // Kiểm tra token ngay khi mount
+  useEffect(() => {
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    setAuthed(Boolean(token));
+  }, []);
 
   const activeEntity = useMemo(
     () => (isDashboardScreen(activeKey) ? undefined : entities.find((entity) => entity.key === activeKey)),
@@ -238,6 +247,32 @@ export function AdminConsole() {
     setSearch(value);
     setPage(1);
   };
+
+  // Đang kiểm tra token (tránh flash)
+  if (authed === null) return <LoadingScreen />;
+
+  // Chưa đăng nhập
+  if (authed === false) {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-4">
+        <div className="w-full max-w-sm text-center">
+          <div className="rounded-2xl border border-red-400/20 bg-red-400/10 p-8 shadow-xl">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-400/20 text-3xl">
+              🔐
+            </div>
+            <h1 className="text-xl font-black text-white">Yêu cầu đăng nhập</h1>
+            <p className="mt-3 text-sm leading-6 text-zinc-400">
+              Bạn chưa đăng nhập vào trang quản trị.
+            </p>
+            <p className="mt-3 text-sm leading-6 text-zinc-500">
+              Gõ <code className="rounded bg-black/40 px-1.5 py-0.5 text-emerald-300">/admin</code> trong
+              Telegram để nhận link đăng nhập.
+            </p>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   if (loading) return <LoadingScreen />;
 

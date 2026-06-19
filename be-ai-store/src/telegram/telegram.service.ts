@@ -183,7 +183,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private async replyStartMenu(context: { reply: (...args: any[]) => unknown }) {
     const miniAppUrl = this.configService.getOrThrow<string>('TELEGRAM_MINIAPP_URL');
     const launchButtons = this.isHttpsUrl(miniAppUrl)
-      ? [[Markup.button.webApp('🛒 Mở cửa hàng', miniAppUrl)]]
+      ? [[Markup.button.webApp('Mở AI Store', miniAppUrl)]]
       : [];
 
     if (!launchButtons.length) {
@@ -194,12 +194,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
     await context.reply(
       launchButtons.length
-        ? 'Chào mừng bạn đến AI Store'
+        ? 'Chào mừng bạn đến AI Store. Nhấn nút bên dưới để mở Mini App ngay trong Telegram.'
         : 'Chào mừng bạn đến AI Store. Mini App cần URL HTTPS để mở trong Telegram.',
       Markup.inlineKeyboard([
         ...launchButtons,
-        [Markup.button.callback('📦 Đơn hàng của tôi', 'orders')],
-        [Markup.button.callback('🎫 Hỗ trợ', 'support')],
+        [Markup.button.callback('Đơn hàng của tôi', 'orders')],
+        [Markup.button.callback('Hỗ trợ', 'support')],
       ]),
     );
   }
@@ -216,14 +216,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const orders = await this.getUserOrders(BigInt(context.from.id));
     if (!orders.length) {
       await context.reply(
-        '📋 LỊCH SỬ MUA HÀNG\n\nBạn chưa có đơn hàng nào tại AI Store.',
-        Markup.inlineKeyboard([[Markup.button.callback('🔙 Quay lại menu', 'start')]]),
+        'LỊCH SỬ MUA HÀNG\n\nBạn chưa có đơn hàng nào tại AI Store.',
+        Markup.inlineKeyboard([[Markup.button.callback('Quay lại menu', 'start')]]),
       );
       return;
     }
 
     await context.reply(
-      '📋 LỊCH SỬ MUA HÀNG\n\nChọn đơn để xem chi tiết:',
+      'LỊCH SỬ MUA HÀNG\n\nChọn đơn để xem chi tiết:',
       Markup.inlineKeyboard(
         orders.map((order) => [
           Markup.button.callback(this.formatOrderListButton(order), `order:${order.id}`),
@@ -278,16 +278,13 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    await context.reply(
-      this.renderOrderDetail(order),
-      {
-        parse_mode: 'HTML',
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback(`🛡️ Yêu cầu bảo hành (${this.getWarrantyLabel(order)})`, `warranty:${order.id}`)],
-          [Markup.button.callback('🔙 Quay lại danh sách đơn', 'orders:back')],
-        ]),
-      },
-    );
+    await context.reply(this.renderOrderDetail(order), {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback(`Yêu cầu bảo hành (${this.getWarrantyLabel(order)})`, `warranty:${order.id}`)],
+        [Markup.button.callback('Quay lại danh sách đơn', 'orders:back')],
+      ]),
+    });
   }
 
   private getUserOrders(telegramId: bigint) {
@@ -321,7 +318,6 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const suffix = order.items.length > 1 ? ` +${order.items.length - 1}` : '';
 
     return [
-      '📦',
       order.orderNo,
       '-',
       `${productLabel}${suffix}`,
@@ -340,19 +336,19 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const accounts = this.renderDeliveredAccounts(order);
 
     return [
-      `🧾 <b>Chi tiết đơn ${this.escapeHtml(order.orderNo)}</b>`,
+      `<b>Chi tiết đơn ${this.escapeHtml(order.orderNo)}</b>`,
       '',
-      `••• Trạng thái: <b>${this.escapeHtml(this.formatOrderStatus(order.status, order.paymentStatus))}</b>`,
-      `🎁 Sản phẩm: <b>${this.escapeHtml(products || '-')}</b>`,
-      `🧾 Số lượng: ${quantity}`,
-      `💵 Tổng tiền: <b>${this.formatMoney(order.totalAmount)}đ</b>`,
-      `🏦 Ngân hàng: ${this.escapeHtml(this.getBankName(payment?.qrContent))}`,
-      `🧾 Mã CK: <code>${this.escapeHtml(payment?.paymentContent || '-')}</code>`,
-      `🗓️ ${this.formatDateTime(order.createdAt)}`,
+      `Trạng thái: <b>${this.escapeHtml(this.formatOrderStatus(order.status, order.paymentStatus))}</b>`,
+      `Sản phẩm: <b>${this.escapeHtml(products || '-')}</b>`,
+      `Số lượng: ${quantity}`,
+      `Tổng tiền: <b>${this.formatMoney(order.totalAmount)}đ</b>`,
+      `Ngân hàng: ${this.escapeHtml(this.getBankName(payment?.qrContent))}`,
+      `Mã CK: <code>${this.escapeHtml(payment?.paymentContent || '-')}</code>`,
+      `Thời gian: ${this.formatDateTime(order.createdAt)}`,
       '',
-      '────────────────────',
+      '--------------------',
       '',
-      '🔑 <b>Thông tin tài khoản</b> (bấm vào dòng mã để copy):',
+      '<b>Thông tin tài khoản</b> (bấm vào dòng mã để copy):',
       '',
       accounts || 'Đơn hàng chưa có thông tin tài khoản được giao.',
     ].join('\n');
@@ -372,11 +368,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         const password = this.inventoryPasswordService.decrypt(inventory.encryptedPassword);
         const twoFactor = metadata.twoFactor || metadata.twoFa || metadata['2fa'] || metadata.pass2fa;
 
-        lines.push(`🔐 Tài khoản${order.items.length > 1 || item.quantity > 1 ? ` #${accountIndex}` : ''}`);
-        lines.push(`• Username: <code>${this.escapeHtml(username)}</code>`);
-        lines.push(`• Password: <code>${this.escapeHtml(password || '-')}</code>`);
+        lines.push(`Tài khoản${order.items.length > 1 || item.quantity > 1 ? ` #${accountIndex}` : ''}`);
+        lines.push(`- Username: <code>${this.escapeHtml(username)}</code>`);
+        lines.push(`- Password: <code>${this.escapeHtml(password || '-')}</code>`);
         if (twoFactor) {
-          lines.push(`• 2FA pass: <code>${this.escapeHtml(twoFactor)}</code>`);
+          lines.push(`- 2FA pass: <code>${this.escapeHtml(twoFactor)}</code>`);
         }
         lines.push('');
         accountIndex += 1;
@@ -397,10 +393,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   private formatOrderStatus(orderStatus: OrderStatus, paymentStatus: PaymentStatus) {
-    if (orderStatus === OrderStatus.DELIVERED) return '✅ Hoàn thành';
-    if (paymentStatus === PaymentStatus.PAID) return '✅ Đã thanh toán';
-    if (paymentStatus === PaymentStatus.FAILED || orderStatus === OrderStatus.CANCELLED) return '❌ Đã hủy';
-    return '⏳ Chờ thanh toán';
+    if (orderStatus === OrderStatus.DELIVERED) return 'Hoàn thành';
+    if (paymentStatus === PaymentStatus.PAID) return 'Đã thanh toán';
+    if (paymentStatus === PaymentStatus.FAILED || orderStatus === OrderStatus.CANCELLED) return 'Đã hủy';
+    return 'Chờ thanh toán';
   }
 
   private getWarrantyLabel(order: OrderDetail) {

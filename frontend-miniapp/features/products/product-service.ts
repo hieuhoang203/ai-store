@@ -24,8 +24,6 @@ export type Product = {
 
 export type ProductReview = {
   id: string;
-  productVariantId: string;
-  variantName?: string;
   userName: string;
   rating: number;
   comment?: string | null;
@@ -45,7 +43,7 @@ export async function getProducts() {
 
 export async function getProductReviews(productId: string) {
   const response = await api.get<ProductReviewsResult>(`/products/${productId}/reviews`, {
-    params: { limit: 20 },
+    params: { limit: 5 },
   });
   return response.data;
 }

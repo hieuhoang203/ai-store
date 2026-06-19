@@ -8,7 +8,7 @@ import {
   getProductsByCategory,
   type Category,
 } from "@/features/categories/category-service";
-import { getProductReviews, type Product, type ProductReview, type ProductVariant } from "@/features/products/product-service";
+import { type Product, type ProductVariant } from "@/features/products/product-service";
 import type { CartItem } from "@/store/cart-store";
 import { EmptyState } from "./empty-state";
 import { ProductDescription } from "./product-description";
@@ -239,11 +239,6 @@ function ProductDetail({
   onBack: () => void;
   onAdd: (item: CartItem) => void;
 }) {
-  const reviewsQuery = useQuery({
-    queryKey: ["product-reviews", product.id],
-    queryFn: () => getProductReviews(product.id),
-  });
-
   return (
     <section className="mini-fade space-y-4">
       <div className="sticky top-0 z-10 -mx-4 border-b border-white/10 bg-[#050805]/95 px-4 pb-3 pt-1 backdrop-blur">
@@ -286,12 +281,6 @@ function ProductDetail({
           </div>
         )}
       </div>
-      <ProductReviewsPanel
-        averageRating={reviewsQuery.data?.averageRating || "0.0"}
-        reviewCount={reviewsQuery.data?.reviewCount || 0}
-        reviews={reviewsQuery.data?.data || []}
-        loading={reviewsQuery.isLoading}
-      />
     </section>
   );
 }
@@ -384,96 +373,6 @@ function formatPriceRange(variants: ProductVariant[]) {
 
 function formatMoney(value: string | number) {
   return Number(value).toLocaleString("vi-VN");
-}
-
-function ProductReviewsPanel({
-  averageRating,
-  reviewCount,
-  reviews,
-  loading,
-}: {
-  averageRating: string;
-  reviewCount: number;
-  reviews: ProductReview[];
-  loading: boolean;
-}) {
-  const groups = groupReviewsByVariant(reviews);
-
-  return (
-    <section className="space-y-3 rounded-xl border border-white/10 bg-white/[0.045] p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-bold text-white">Đánh giá khách hàng</p>
-          <p className="mt-1 text-xs font-semibold text-zinc-500">{reviewCount} lượt đánh giá</p>
-        </div>
-        <span className="inline-flex items-center gap-1 rounded-full bg-amber-300/12 px-2.5 py-1 text-sm font-bold text-amber-200">
-          <Star className="h-4 w-4 fill-current" />
-          {averageRating}
-        </span>
-      </div>
-      {loading ? (
-        <div className="h-16 animate-pulse rounded-lg bg-black/25" />
-      ) : reviews.length ? (
-        <div className="space-y-3">
-          {groups.map((group) => (
-            <div key={group.variantId} className="rounded-lg border border-white/10 bg-black/20 p-2.5">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-white">{group.variantName}</p>
-                  <p className="text-xs font-semibold text-zinc-500">{group.reviews.length} lượt đánh giá</p>
-                </div>
-                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-300/12 px-2 py-1 text-xs font-bold text-amber-200">
-                  <Star className="h-3.5 w-3.5 fill-current" />
-                  {group.averageRating}
-                </span>
-              </div>
-              <div className="space-y-2">
-                {group.reviews.map((review) => (
-                  <article key={review.id} className="rounded-md border border-white/10 bg-black/30 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-bold text-white">{review.userName}</p>
-                      <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-200">
-                        <Star className="h-3.5 w-3.5 fill-current" />
-                        {review.rating}/5
-                      </span>
-                    </div>
-                    {review.comment ? <p className="mt-2 text-sm leading-5 text-zinc-300">{review.comment}</p> : null}
-                  </article>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="rounded-lg border border-white/10 bg-black/25 p-3 text-sm font-semibold text-zinc-400">
-          Chưa có đánh giá cho sản phẩm này.
-        </p>
-      )}
-    </section>
-  );
-}
-
-function groupReviewsByVariant(reviews: ProductReview[]) {
-  const groups = new Map<string, { variantId: string; variantName: string; reviews: ProductReview[] }>();
-
-  for (const review of reviews) {
-    const variantId = review.productVariantId || "unknown";
-    const group = groups.get(variantId) || {
-      variantId,
-      variantName: review.variantName || "Gói sản phẩm",
-      reviews: [],
-    };
-
-    group.reviews.push(review);
-    groups.set(variantId, group);
-  }
-
-  return Array.from(groups.values()).map((group) => ({
-    ...group,
-    averageRating: (
-      group.reviews.reduce((sum, review) => sum + review.rating, 0) / group.reviews.length
-    ).toFixed(1),
-  }));
 }
 
 function getStockLabel(availableStock?: number) {

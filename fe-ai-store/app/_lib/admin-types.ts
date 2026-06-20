@@ -7,6 +7,7 @@ export type FieldType =
   | "decimal"
   | "boolean"
   | "date"
+  | "image"
   | "json"
   | "enum"
   | "relation";

@@ -8,7 +8,10 @@ import {
   Post,
   Put,
   Query,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { AdminService } from '../services/admin.service';
 
 @Controller('admin')
@@ -23,6 +26,12 @@ export class AdminController {
   @Get('dashboard')
   dashboard() {
     return this.adminService.dashboard();
+  }
+
+  @Post('uploads/image')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadImage(@UploadedFile() file?: { buffer: Buffer; mimetype: string; originalname?: string; size: number }) {
+    return this.adminService.uploadImage(file);
   }
 
   @Get(':entity')

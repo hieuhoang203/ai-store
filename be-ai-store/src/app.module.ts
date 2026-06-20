@@ -41,6 +41,7 @@ import { UsersModule } from './users/users.module';
         PAYOS_CHECKSUM_KEY: Joi.string().allow('').default(''),
         PAYOS_API_BASE_URL: Joi.string().uri().default('https://api-merchant.payos.vn'),
         PAYOS_PAYMENT_DESCRIPTION_PREFIX: Joi.string().max(60).default('AI Store'),
+        CLOUDINARY_URL: Joi.string().allow('').default(''),
         SUPPORT_NAME: Joi.string().allow('').default('AI Store Support'),
         SUPPORT_PHONE: Joi.string().allow('').default('0966628527'),
         SUPPORT_TELEGRAM: Joi.string().allow('').default('@hieuhv203'),

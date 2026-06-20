@@ -112,7 +112,7 @@ export const ADMIN_ENTITIES: AdminEntityConfig[] = [
       { name: 'name', label: 'Name', type: 'string', list: true },
       { name: 'description', label: 'Description', type: 'text', list: false },
       { name: 'categoryId', label: 'Category', type: 'relation', list: true, relation: { entityKey: 'categories', labelField: 'name' } },
-      { name: 'imageUrl', label: 'Image URL', type: 'string', list: false },
+      { name: 'imageUrl', label: 'Image', type: 'image', list: false },
       { name: 'isActive', label: 'Active', type: 'boolean', list: true },
       ...timestamps,
       softDeleteField,

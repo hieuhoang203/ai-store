@@ -75,3 +75,30 @@ export function deleteEntity(entityKey: string, recordId: unknown) {
     method: "DELETE",
   });
 }
+
+export async function uploadAdminImage(file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(`${API_BASE_URL}/admin/uploads/image`, {
+    method: "POST",
+    headers: {
+      ...getAuthHeaders(),
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message || `Upload failed with ${response.status}`);
+  }
+
+  return response.json() as Promise<{
+    url: string;
+    publicId: string;
+    width: number;
+    height: number;
+    format: string;
+    bytes: number;
+  }>;
+}

@@ -7,6 +7,7 @@ export type AdminFieldType =
   | 'decimal'
   | 'boolean'
   | 'date'
+  | 'image'
   | 'json'
   | 'enum'
   | 'relation';

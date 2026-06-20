@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
 import { AuditAction, Prisma, TicketStatus } from '../../../generated/prisma/client.js';
 import { InventoryStatus, OrderStatus, PaymentStatus } from '../models/admin-enums.model';
 import { PrismaService } from '../../database/prisma.service';
@@ -14,6 +15,13 @@ import {
 } from '../interfaces/admin-crud.interface';
 import { AdminRepository } from '../repositories/admin.repository';
 import { RedisService } from '../../redis/redis.service';
+
+type UploadedImageFile = {
+  buffer: Buffer;
+  mimetype: string;
+  originalname?: string;
+  size: number;
+};
 
 @Injectable()
 export class AdminService {
@@ -189,6 +197,56 @@ export class AdminService {
     });
   }
 
+  async uploadImage(file?: UploadedImageFile) {
+    if (!file) {
+      throw new BadRequestException('Image file is required');
+    }
+
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('Only image files are supported');
+    }
+
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      throw new BadRequestException('Image file must be 5MB or smaller');
+    }
+
+    if (!process.env.CLOUDINARY_URL) {
+      throw new BadRequestException('CLOUDINARY_URL is not configured');
+    }
+
+    cloudinary.config({ secure: true });
+    const result = await new Promise<UploadApiResponse>((resolve, reject) => {
+      const upload = cloudinary.uploader.upload_stream(
+        {
+          folder: 'ai-store',
+          resource_type: 'image',
+          use_filename: true,
+          unique_filename: true,
+        },
+        (error, response) => {
+          if (error || !response) {
+            reject(error || new Error('Cloudinary upload failed'));
+            return;
+          }
+
+          resolve(response);
+        },
+      );
+
+      upload.end(file.buffer);
+    });
+
+    return {
+      url: result.secure_url,
+      publicId: result.public_id,
+      width: result.width,
+      height: result.height,
+      format: result.format,
+      bytes: result.bytes,
+    };
+  }
+
   private getConfig(entityKey: string) {
     const config = ADMIN_ENTITY_MAP.get(entityKey);
 
@@ -259,6 +317,8 @@ export class AdminService {
         return value === true || value === 'true';
       case 'date':
         return new Date(String(value));
+      case 'image':
+        return String(value).trim();
       case 'json':
         return typeof value === 'string' ? JSON.parse(value) : value;
       default:

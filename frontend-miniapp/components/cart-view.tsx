@@ -322,9 +322,7 @@ function PaymentSuccessPanel({ status }: { status: PaymentStatusResult }) {
       </div>
 
       {status.deliveryMessage ? (
-        <pre className="mt-4 whitespace-pre-wrap break-words rounded-lg bg-black/35 p-3 text-sm leading-6 text-emerald-100">
-          {status.deliveryMessage}
-        </pre>
+        <LinkifiedDeliveryText text={status.deliveryMessage} className="mt-4" />
       ) : status.deliveries.length ? (
         <div className="mt-4 space-y-3">
           {status.deliveries.map((delivery) => (
@@ -332,9 +330,10 @@ function PaymentSuccessPanel({ status }: { status: PaymentStatusResult }) {
               <p className="text-sm font-bold text-white">
                 {delivery.productName} - {delivery.variantName}
               </p>
-              <pre className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-black/35 p-3 text-sm leading-6 text-emerald-100">
-                {delivery.content || "Đang chuẩn bị thông tin giao hàng..."}
-              </pre>
+              <LinkifiedDeliveryText
+                text={delivery.content || "Đang chuẩn bị thông tin giao hàng..."}
+                className="mt-3"
+              />
             </article>
           ))}
         </div>
@@ -345,6 +344,34 @@ function PaymentSuccessPanel({ status }: { status: PaymentStatusResult }) {
       )}
     </section>
   );
+}
+
+function LinkifiedDeliveryText({ text, className = "" }: { text: string; className?: string }) {
+  return (
+    <div className={`${className} whitespace-pre-wrap break-words rounded-lg bg-black/35 p-3 text-sm leading-6 text-emerald-100`}>
+      {linkifyText(text)}
+    </div>
+  );
+}
+
+function linkifyText(text: string) {
+  const urlPattern = /(https?:\/\/[^\s]+)/g;
+  return text.split(urlPattern).map((part, index) => {
+    if (!/^https?:\/\//.test(part)) return part;
+
+    return (
+      <a
+        key={`${part}-${index}`}
+        href={part}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 break-all font-bold text-emerald-300 underline decoration-emerald-300/40 underline-offset-2"
+      >
+        {part}
+        <ExternalLink className="inline h-3.5 w-3.5 shrink-0" />
+      </a>
+    );
+  });
 }
 
 function PaymentExpiredPanel({

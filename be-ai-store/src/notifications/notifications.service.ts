@@ -179,20 +179,17 @@ export class NotificationsService {
       where: { id: variantId },
       include: {
         product: { include: { categoryRef: true } },
-        _count: {
-          select: {
-            inventories: {
-              where: {
-                status: { in: [InventoryStatus.AVAILABLE, InventoryStatus.RESERVED] },
-                isDeleted: false,
-              },
-            },
+        inventories: {
+          where: {
+            status: { in: [InventoryStatus.AVAILABLE, InventoryStatus.RESERVED] },
+            isDeleted: false,
           },
+          select: { metadata: true },
         },
       },
     });
 
-    if (!variant || variant.isDeleted || variant._count.inventories > 0) {
+    if (!variant || variant.isDeleted || this.countAvailableSlots(variant.inventories) > 0) {
       return;
     }
 
@@ -258,6 +255,38 @@ export class NotificationsService {
       categoryName: variant.product.categoryRef?.name,
       variantName: variant.name,
     };
+  }
+
+  private countAvailableSlots(inventories: Array<{ metadata: unknown }>) {
+    return inventories.reduce((sum, inventory) => {
+      const metadata = this.normalizeMetadata(inventory.metadata);
+      if (metadata.inventoryType !== 'INVITE_LINK') return sum + 1;
+
+      const maxUses = this.toSafeInteger(metadata.maxUses);
+      const usedSlots = this.toSafeInteger(metadata.usedSlots);
+      const reservedSlots = Array.isArray(metadata.reservedSlots)
+        ? metadata.reservedSlots.reduce(
+            (total, slot) =>
+              total + this.toSafeInteger((slot as Record<string, unknown>).quantity),
+            0,
+          )
+        : 0;
+
+      return sum + Math.max(maxUses - usedSlots - reservedSlots, 0);
+    }, 0);
+  }
+
+  private normalizeMetadata(metadata: unknown) {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      return {} as Record<string, unknown>;
+    }
+
+    return metadata as Record<string, unknown>;
+  }
+
+  private toSafeInteger(value: unknown) {
+    const number = Number(value || 0);
+    return Number.isSafeInteger(number) && number > 0 ? number : 0;
   }
 
   private renderCouponDiscount(coupon: {

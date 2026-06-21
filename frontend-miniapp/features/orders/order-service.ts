@@ -137,6 +137,7 @@ export type OrderDetail = {
       email?: string | null;
       username?: string | null;
       password?: string | null;
+      gatewayUrl?: string | null;
       twoFactor?: string | null;
       deliveredAt?: string | null;
     }>;

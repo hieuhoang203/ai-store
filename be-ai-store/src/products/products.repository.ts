@@ -14,12 +14,9 @@ export class ProductsRepository {
         variants: {
           where: { isDeleted: false, active: true },
           include: {
-            _count: {
-              select: {
-                inventories: {
-                  where: { status: InventoryStatus.AVAILABLE, isDeleted: false },
-                },
-              },
+            inventories: {
+              where: { status: InventoryStatus.AVAILABLE, isDeleted: false },
+              select: { id: true, metadata: true },
             },
           },
         },
@@ -55,12 +52,9 @@ export class ProductsRepository {
         variants: {
           where: { isDeleted: false, active: true },
           include: {
-            _count: {
-              select: {
-                inventories: {
-                  where: { status: InventoryStatus.AVAILABLE, isDeleted: false },
-                },
-              },
+            inventories: {
+              where: { status: InventoryStatus.AVAILABLE, isDeleted: false },
+              select: { id: true, metadata: true },
             },
           },
         },
@@ -77,12 +71,9 @@ export class ProductsRepository {
         variants: {
           where: { isDeleted: false, active: true },
           include: {
-            _count: {
-              select: {
-                inventories: {
-                  where: { status: InventoryStatus.AVAILABLE, isDeleted: false },
-                },
-              },
+            inventories: {
+              where: { status: InventoryStatus.AVAILABLE, isDeleted: false },
+              select: { id: true, metadata: true },
             },
           },
         },

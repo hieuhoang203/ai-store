@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { CouponsModule } from './coupons/coupons.module';
 import { PrismaModule } from './database/prisma.module';
 import { DeliveriesModule } from './deliveries/deliveries.module';
+import { GatewayModule } from './gateway/gateway.module';
 import { HealthModule } from './health/health.module';
 import { InventoriesModule } from './inventories/inventories.module';
 import { JobsModule } from './jobs/jobs.module';
@@ -30,6 +31,7 @@ import { UsersModule } from './users/users.module';
         PORT: Joi.number().port().default(8903),
         DATABASE_URL: Joi.string().uri().required(),
         REDIS_URL: Joi.string().uri().required(),
+        APP_PUBLIC_URL: Joi.string().uri().default('http://localhost:8903'),
         JWT_ACCESS_SECRET: Joi.string().default('dev-access-secret'),
         JWT_REFRESH_SECRET: Joi.string().default('dev-refresh-secret'),
         INVENTORY_PASSWORD_SECRET: Joi.string().default('local-inventory-password-secret'),
@@ -64,6 +66,7 @@ import { UsersModule } from './users/users.module';
     PaymentsModule,
     ReviewsModule,
     DeliveriesModule,
+    GatewayModule,
     NotificationsModule,
     TicketsModule,
     JobsModule,

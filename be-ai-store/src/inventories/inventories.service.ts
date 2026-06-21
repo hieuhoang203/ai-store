@@ -47,6 +47,17 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
       reservedUntil: Date;
     },
   ) {
+    const inviteInventoryIds = await this.reserveInviteLinkInventory(tx, {
+      variantId,
+      quantity,
+      userId,
+      orderId,
+      reservedUntil,
+    });
+    if (inviteInventoryIds.length) {
+      return inviteInventoryIds;
+    }
+
     const lockedInventories = await tx.$queryRaw<Array<{ id: string }>>`
       SELECT "id"
       FROM "inventories"
@@ -79,6 +90,7 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
 
   async markReservedInventoriesSold(orderId: string) {
     return this.prisma.$transaction(async (tx) => {
+      const soldInviteInventories = await this.markInviteLinkReservationSold(tx, orderId);
       const inventories = await tx.inventory.findMany({
         where: {
           reservedOrderId: orderId,
@@ -89,7 +101,7 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
       });
 
       if (!inventories.length) {
-        return [] as Inventory[];
+        return soldInviteInventories;
       }
 
       for (const inventory of inventories.filter((item) => item.status === InventoryStatus.RESERVED)) {
@@ -103,15 +115,18 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
         });
       }
 
-      return tx.inventory.findMany({
+      const standardInventories = await tx.inventory.findMany({
         where: { id: { in: inventories.map((inventory) => inventory.id) } },
         orderBy: { createdAt: 'asc' },
       });
+
+      return [...soldInviteInventories, ...standardInventories];
     });
 
   }
 
   async releaseReservationForOrder(orderId: string) {
+    const releasedInviteReservations = await this.releaseInviteLinkReservationForOrder(orderId);
     const reservedInventories = await this.prisma.inventory.findMany({
       where: {
         reservedOrderId: orderId,
@@ -121,7 +136,7 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
       select: { id: true, variantId: true },
     });
 
-    if (!reservedInventories.length) return 0;
+    if (!reservedInventories.length) return releasedInviteReservations;
 
     const released = await this.prisma.inventory.updateMany({
       where: { id: { in: reservedInventories.map((inventory) => inventory.id) } },
@@ -134,10 +149,11 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    return released.count;
+    return releasedInviteReservations + released.count;
   }
 
   async releaseExpiredReservations(now = new Date()) {
+    const releasedInviteReservations = await this.releaseExpiredInviteLinkReservations(now);
     const expiredReservations = await this.prisma.inventory.findMany({
       where: {
         status: InventoryStatus.RESERVED,
@@ -148,7 +164,7 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
       take: 500,
     });
 
-    if (!expiredReservations.length) return 0;
+    if (!expiredReservations.length) return releasedInviteReservations;
     const reservedOrderIds = Array.from(
       new Set(
         expiredReservations
@@ -170,7 +186,7 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
       (inventory) => !inventory.reservedOrderId || !pendingOrderIds.has(inventory.reservedOrderId),
     );
 
-    if (!releasableReservations.length) return 0;
+    if (!releasableReservations.length) return releasedInviteReservations;
 
     const released = await this.prisma.inventory.updateMany({
       where: { id: { in: releasableReservations.map((inventory) => inventory.id) } },
@@ -184,7 +200,7 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.logger.log(`Released ${released.count} expired inventory reservations`);
-    return released.count;
+    return releasedInviteReservations + released.count;
   }
 
   async getReservedInventoriesForOrder(orderId: string) {
@@ -207,12 +223,15 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (!count) {
-      throw new NotFoundException('No reserved inventory for order');
+      const inviteCount = await this.countInviteLinkReservationsForOrder(orderId);
+      if (!inviteCount) {
+        throw new NotFoundException('No reserved inventory for order');
+      }
     }
   }
 
   async announceOutOfStockIfNeeded(variantId: string) {
-    const purchasableOrPendingCount = await this.prisma.inventory.count({
+    const inventoryCount = await this.prisma.inventory.count({
       where: {
         variantId,
         status: { in: [InventoryStatus.AVAILABLE, InventoryStatus.RESERVED] },
@@ -220,8 +239,251 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
+    if (inventoryCount === 0) {
+      await this.notificationsService.announceVariantOutOfStock(variantId);
+      return;
+    }
+
+    const inventories = await this.prisma.inventory.findMany({
+      where: {
+        variantId,
+        status: { in: [InventoryStatus.AVAILABLE, InventoryStatus.RESERVED] },
+        isDeleted: false,
+      },
+      select: { metadata: true, status: true },
+    });
+    const purchasableOrPendingCount = inventories.reduce((sum, inventory) => {
+      const metadata = this.normalizeMetadata(inventory.metadata);
+      if (metadata.inventoryType !== 'INVITE_LINK') return sum + 1;
+
+      const maxUses = this.toSafeInteger(metadata.maxUses);
+      const usedSlots = this.toSafeInteger(metadata.usedSlots);
+      const reservedSlots = this.toReservedSlots(metadata.reservedSlots);
+      const reservedCount = reservedSlots.reduce((total, slot) => total + slot.quantity, 0);
+      return sum + Math.max(maxUses - usedSlots - reservedCount, 0);
+    }, 0);
+
     if (purchasableOrPendingCount === 0) {
       await this.notificationsService.announceVariantOutOfStock(variantId);
     }
+  }
+
+  private async reserveInviteLinkInventory(
+    tx: TransactionClient,
+    {
+      variantId,
+      quantity,
+      userId,
+      orderId,
+      reservedUntil,
+    }: {
+      variantId: string;
+      quantity: number;
+      userId: string;
+      orderId: string;
+      reservedUntil: Date;
+    },
+  ) {
+    const [inventory] = await tx.$queryRaw<Array<{ id: string; metadata: Prisma.JsonValue }>>`
+      SELECT "id", "metadata"
+      FROM "inventories"
+      WHERE "variant_id" = ${variantId}::uuid
+        AND "status" = 'AVAILABLE'::"InventoryStatus"
+        AND "is_deleted" = false
+        AND "metadata" ->> 'inventoryType' = 'INVITE_LINK'
+      ORDER BY "created_at" ASC
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    `;
+
+    if (!inventory) return [];
+
+    const metadata = this.normalizeMetadata(inventory.metadata);
+    if (metadata.inventoryType !== 'INVITE_LINK') return [];
+
+    const reservedSlots = this.cleanReservedSlots(metadata.reservedSlots, new Date());
+    const maxUses = this.toSafeInteger(metadata.maxUses);
+    const usedSlots = this.toSafeInteger(metadata.usedSlots);
+    const reservedCount = reservedSlots.reduce((sum, slot) => sum + slot.quantity, 0);
+
+    if (maxUses <= 0 || maxUses - usedSlots - reservedCount < quantity) {
+      throw new BadRequestException('Không đủ số lượng tài khoản trong kho.');
+    }
+
+    await tx.inventory.update({
+      where: { id: inventory.id },
+      data: {
+        metadata: {
+          ...metadata,
+          usedSlots,
+          reservedSlots: [
+            ...reservedSlots,
+            {
+              orderId,
+              userId,
+              quantity,
+              reservedAt: new Date().toISOString(),
+              reservedUntil: reservedUntil.toISOString(),
+            },
+          ],
+        },
+      },
+    });
+
+    return Array.from({ length: quantity }, () => inventory.id);
+  }
+
+  private async markInviteLinkReservationSold(tx: TransactionClient, orderId: string) {
+    const inventories = await tx.$queryRaw<Array<{ id: string; metadata: Prisma.JsonValue }>>`
+      SELECT "id", "metadata"
+      FROM "inventories"
+      WHERE "status" = 'AVAILABLE'::"InventoryStatus"
+        AND "is_deleted" = false
+        AND "metadata" ->> 'inventoryType' = 'INVITE_LINK'
+      FOR UPDATE
+    `;
+    const soldInventories: Inventory[] = [];
+
+    for (const inventory of inventories) {
+      const metadata = this.normalizeMetadata(inventory.metadata);
+      const reservedSlots = this.cleanReservedSlots(metadata.reservedSlots, new Date());
+      const matchingSlots = reservedSlots.filter((slot) => slot.orderId === orderId);
+      if (!matchingSlots.length) continue;
+
+      const quantity = matchingSlots.reduce((sum, slot) => sum + slot.quantity, 0);
+      const usedSlots = this.toSafeInteger(metadata.usedSlots) + quantity;
+      await tx.inventory.update({
+        where: { id: inventory.id },
+        data: {
+          metadata: {
+            ...metadata,
+            usedSlots,
+            reservedSlots: reservedSlots.filter((slot) => slot.orderId !== orderId),
+            lastSoldAt: new Date().toISOString(),
+          },
+        },
+      });
+
+      const updated = await tx.inventory.findUniqueOrThrow({ where: { id: inventory.id } });
+      soldInventories.push(...Array.from({ length: quantity }, () => updated));
+    }
+
+    return soldInventories;
+  }
+
+  private async releaseInviteLinkReservationForOrder(orderId: string) {
+    const released = await this.prisma.$transaction(async (tx) => {
+      const inventories = await tx.$queryRaw<Array<{ id: string; metadata: Prisma.JsonValue }>>`
+        SELECT "id", "metadata"
+        FROM "inventories"
+        WHERE "status" = 'AVAILABLE'::"InventoryStatus"
+          AND "is_deleted" = false
+          AND "metadata" ->> 'inventoryType' = 'INVITE_LINK'
+        FOR UPDATE
+      `;
+      let released = 0;
+
+      for (const inventory of inventories) {
+        const metadata = this.normalizeMetadata(inventory.metadata);
+        const reservedSlots = this.cleanReservedSlots(metadata.reservedSlots, new Date());
+        const nextReservedSlots = reservedSlots.filter((slot) => slot.orderId !== orderId);
+        released += reservedSlots.length - nextReservedSlots.length;
+        if (nextReservedSlots.length === reservedSlots.length) continue;
+
+        await tx.inventory.update({
+          where: { id: inventory.id },
+          data: { metadata: { ...metadata, reservedSlots: nextReservedSlots } },
+        });
+      }
+
+      return released;
+    });
+
+    return released || 0;
+  }
+
+  private async releaseExpiredInviteLinkReservations(now: Date) {
+    const released = await this.prisma.$transaction(async (tx) => {
+      const inventories = await tx.$queryRaw<Array<{ id: string; metadata: Prisma.JsonValue }>>`
+        SELECT "id", "metadata"
+        FROM "inventories"
+        WHERE "status" = 'AVAILABLE'::"InventoryStatus"
+          AND "is_deleted" = false
+          AND "metadata" ->> 'inventoryType' = 'INVITE_LINK'
+        FOR UPDATE
+      `;
+      let released = 0;
+
+      for (const inventory of inventories) {
+        const metadata = this.normalizeMetadata(inventory.metadata);
+        const reservedSlots = this.toReservedSlots(metadata.reservedSlots);
+        const nextReservedSlots = this.cleanReservedSlots(reservedSlots, now);
+        released += reservedSlots.length - nextReservedSlots.length;
+        if (nextReservedSlots.length === reservedSlots.length) continue;
+
+        await tx.inventory.update({
+          where: { id: inventory.id },
+          data: { metadata: { ...metadata, reservedSlots: nextReservedSlots } },
+        });
+      }
+
+      return released;
+    });
+
+    return released || 0;
+  }
+
+  private async countInviteLinkReservationsForOrder(orderId: string) {
+    const inventories = await this.prisma.inventory.findMany({
+      where: {
+        status: InventoryStatus.AVAILABLE,
+        isDeleted: false,
+      },
+      select: { metadata: true },
+    });
+
+    return inventories.filter((inventory) =>
+      this.toReservedSlots(this.normalizeMetadata(inventory.metadata).reservedSlots).some(
+        (slot) => slot.orderId === orderId,
+      ),
+    ).length;
+  }
+
+  private normalizeMetadata(metadata: Prisma.JsonValue | unknown) {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      return {} as Record<string, unknown>;
+    }
+
+    return metadata as Record<string, unknown>;
+  }
+
+  private toReservedSlots(value: unknown) {
+    if (!Array.isArray(value)) return [];
+
+    return value
+      .map((slot) => {
+        if (!slot || typeof slot !== 'object' || Array.isArray(slot)) return null;
+        const record = slot as Record<string, unknown>;
+        const orderId = typeof record.orderId === 'string' ? record.orderId : '';
+        const userId = typeof record.userId === 'string' ? record.userId : '';
+        const quantity = this.toSafeInteger(record.quantity);
+        const reservedAt = typeof record.reservedAt === 'string' ? record.reservedAt : new Date().toISOString();
+        const reservedUntil = typeof record.reservedUntil === 'string' ? record.reservedUntil : '';
+
+        if (!orderId || !quantity || !reservedUntil) return null;
+        return { orderId, userId, quantity, reservedAt, reservedUntil };
+      })
+      .filter((slot): slot is { orderId: string; userId: string; quantity: number; reservedAt: string; reservedUntil: string } => Boolean(slot));
+  }
+
+  private cleanReservedSlots(value: unknown, now: Date) {
+    return this.toReservedSlots(value).filter(
+      (slot) => new Date(slot.reservedUntil).getTime() > now.getTime(),
+    );
+  }
+
+  private toSafeInteger(value: unknown) {
+    const number = Number(value || 0);
+    return Number.isSafeInteger(number) && number > 0 ? number : 0;
   }
 }

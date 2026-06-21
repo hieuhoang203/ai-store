@@ -1,6 +1,7 @@
 export type DeliveryAccount = {
   email?: string | null;
   password?: string | null;
+  gatewayUrl?: string | null;
 };
 
 export type DeliveryProduct = {
@@ -63,23 +64,43 @@ export function renderDeliveryTelegramMessage(payload: DeliveryMessagePayload) {
 function renderProduct(product: DeliveryProduct) {
   const accounts = product.accounts.length ? product.accounts : [{}];
 
-  return accounts.flatMap((account) => [
-    `🤖 ${renderProductName(product)}`,
-    `📧 ${renderValue(account.email)}`,
-    `🔑 ${renderValue(account.password)}`,
-    '',
-  ]);
+  return accounts.flatMap((account) => {
+    if (account.gatewayUrl) {
+      return [
+        `🤖 ${renderProductName(product)}`,
+        `🔗 Link nhận dịch vụ: ${renderValue(account.gatewayUrl)}`,
+        '',
+      ];
+    }
+
+    return [
+      `🤖 ${renderProductName(product)}`,
+      `📧 ${renderValue(account.email)}`,
+      `🔑 ${renderValue(account.password)}`,
+      '',
+    ];
+  });
 }
 
 function renderTelegramProduct(product: DeliveryProduct) {
   const accounts = product.accounts.length ? product.accounts : [{}];
 
-  return accounts.flatMap((account) => [
-    `🤖 ${escapeHtml(renderProductName(product))}`,
-    `📧 <code>${escapeHtml(renderValue(account.email))}</code>`,
-    `🔑 <code>${escapeHtml(renderValue(account.password))}</code>`,
-    '',
-  ]);
+  return accounts.flatMap((account) => {
+    if (account.gatewayUrl) {
+      return [
+        `🤖 ${escapeHtml(renderProductName(product))}`,
+        `🔗 Link nhận dịch vụ: ${escapeHtml(renderValue(account.gatewayUrl))}`,
+        '',
+      ];
+    }
+
+    return [
+      `🤖 ${escapeHtml(renderProductName(product))}`,
+      `📧 <code>${escapeHtml(renderValue(account.email))}</code>`,
+      `🔑 <code>${escapeHtml(renderValue(account.password))}</code>`,
+      '',
+    ];
+  });
 }
 
 function renderProductName(product: DeliveryProduct) {

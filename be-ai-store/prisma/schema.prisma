@@ -408,6 +408,7 @@ model Delivery {
   orderItemId     String         @map("order_item_id") @db.Uuid
   inventoryId     String         @map("inventory_id") @db.Uuid
   deliveryContent String?        @map("delivery_content")
+  metadata        Json?
   deliveredAt     DateTime?      @map("delivered_at") @db.Timestamptz(6)
   status          DeliveryStatus @default(PENDING)
   createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)

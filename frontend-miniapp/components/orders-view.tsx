@@ -420,17 +420,19 @@ function OrderDetailPanel({
                     Tài khoản {product.accounts.length > 1 ? `#${accountIndex + 1}` : ""}
                   </p>
                   <CopyRow
-                    label="Username"
-                    value={account.username || account.email || "-"}
-                    copied={copiedKey === `${productIndex}-${accountIndex}-username`}
-                    onCopy={() => onCopy(`${productIndex}-${accountIndex}-username`, account.username || account.email)}
+                    label={account.gatewayUrl ? "Link" : "Username"}
+                    value={account.gatewayUrl || account.username || account.email || "-"}
+                    copied={copiedKey === `${productIndex}-${accountIndex}-primary`}
+                    onCopy={() => onCopy(`${productIndex}-${accountIndex}-primary`, account.gatewayUrl || account.username || account.email)}
                   />
-                  <CopyRow
-                    label="Password"
-                    value={account.password || "-"}
-                    copied={copiedKey === `${productIndex}-${accountIndex}-password`}
-                    onCopy={() => onCopy(`${productIndex}-${accountIndex}-password`, account.password)}
-                  />
+                  {!account.gatewayUrl ? (
+                    <CopyRow
+                      label="Password"
+                      value={account.password || "-"}
+                      copied={copiedKey === `${productIndex}-${accountIndex}-password`}
+                      onCopy={() => onCopy(`${productIndex}-${accountIndex}-password`, account.password)}
+                    />
+                  ) : null}
                   {account.twoFactor ? (
                     <CopyRow
                       label="2FA"

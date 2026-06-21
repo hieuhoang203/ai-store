@@ -433,13 +433,39 @@ export class AdminService {
   }
 
   private encryptInventoryPassword(entityKey: string, data: Record<string, unknown>) {
-    if (entityKey !== 'inventories' || typeof data.encryptedPassword !== 'string') return;
-    data.encryptedPassword = this.inventoryPasswordService.encrypt(data.encryptedPassword);
+    if (entityKey !== 'inventories') return;
+    if (typeof data.encryptedPassword === 'string') {
+      data.encryptedPassword = this.inventoryPasswordService.encrypt(data.encryptedPassword);
+    }
+    this.encryptInviteLinkMetadata(data);
   }
 
   private decryptInventoryPassword(entityKey: string, record: Record<string, unknown>) {
     if (entityKey !== 'inventories' || typeof record.encryptedPassword !== 'string') return;
     record.encryptedPassword = this.inventoryPasswordService.decrypt(record.encryptedPassword);
+  }
+
+  private encryptInviteLinkMetadata(data: Record<string, unknown>) {
+    if (!data.metadata || typeof data.metadata !== 'object' || Array.isArray(data.metadata)) return;
+
+    const metadata = { ...(data.metadata as Record<string, unknown>) };
+    const inviteLink = typeof metadata.inviteLink === 'string' ? metadata.inviteLink.trim() : '';
+    const encryptedInviteLink =
+      typeof metadata.encryptedInviteLink === 'string' ? metadata.encryptedInviteLink.trim() : '';
+
+    if (inviteLink) {
+      metadata.encryptedInviteLink = this.inventoryPasswordService.encrypt(inviteLink);
+      delete metadata.inviteLink;
+    } else if (encryptedInviteLink) {
+      metadata.encryptedInviteLink = this.inventoryPasswordService.encrypt(encryptedInviteLink);
+    }
+
+    if (metadata.inventoryType === 'INVITE_LINK') {
+      metadata.usedSlots = Number(metadata.usedSlots || 0);
+      metadata.reservedSlots = Array.isArray(metadata.reservedSlots) ? metadata.reservedSlots : [];
+    }
+
+    data.metadata = metadata;
   }
 
   private normalizeCouponPayload(entityKey: string, data: Record<string, unknown>) {

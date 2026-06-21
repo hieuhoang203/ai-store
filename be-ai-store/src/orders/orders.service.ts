@@ -331,15 +331,22 @@ export class OrdersService {
             : null,
           accounts: item.deliveries
             .filter((delivery) => delivery.status === DeliveryStatus.DELIVERED)
-            .map((delivery) => {
-              const metadata = this.normalizeMetadata(delivery.inventory.metadata);
-              return {
-                email: delivery.inventory.accountEmail,
-                username: metadata.username || delivery.inventory.accountEmail,
-                password: this.inventoryPasswordService.decrypt(delivery.inventory.encryptedPassword),
-                twoFactor:
-                  metadata.twoFactor ||
-                  metadata.twoFa ||
+          .map((delivery) => {
+            const metadata = this.normalizeMetadata(delivery.inventory.metadata);
+            const deliveryMetadata = this.normalizeMetadata(delivery.metadata);
+            const gatewayUrl =
+              typeof deliveryMetadata.gatewayUrl === 'string' ? deliveryMetadata.gatewayUrl : null;
+            const isGatewayDelivery = deliveryMetadata.deliveryType === 'LINK_GATEWAY';
+            return {
+              email: delivery.inventory.accountEmail,
+              username: metadata.username || delivery.inventory.accountEmail,
+              password: isGatewayDelivery
+                ? null
+                : this.inventoryPasswordService.decrypt(delivery.inventory.encryptedPassword),
+              gatewayUrl,
+              twoFactor:
+                metadata.twoFactor ||
+                metadata.twoFa ||
                   metadata['2fa'] ||
                   metadata.pass2fa ||
                   null,

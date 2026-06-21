@@ -31,7 +31,7 @@ import { UsersModule } from './users/users.module';
         PORT: Joi.number().port().default(8903),
         DATABASE_URL: Joi.string().uri().required(),
         REDIS_URL: Joi.string().uri().required(),
-        APP_PUBLIC_URL: Joi.string().uri().default('http://localhost:8903'),
+        APP_PUBLIC_URL: Joi.string().uri().default('https://ai-store-lnin.onrender.com'),
         JWT_ACCESS_SECRET: Joi.string().default('dev-access-secret'),
         JWT_REFRESH_SECRET: Joi.string().default('dev-refresh-secret'),
         INVENTORY_PASSWORD_SECRET: Joi.string().default('local-inventory-password-secret'),

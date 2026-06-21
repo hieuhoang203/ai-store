@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Clipboard, Package, ReceiptText, Send, ShieldCheck, Star, X } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Clipboard, ExternalLink, Package, ReceiptText, Send, ShieldCheck, Star, X } from "lucide-react";
 import {
   createReview,
   createWarrantyTicket,
@@ -419,12 +419,16 @@ function OrderDetailPanel({
                     <CheckCircle2 className="h-4 w-4" />
                     Tài khoản {product.accounts.length > 1 ? `#${accountIndex + 1}` : ""}
                   </p>
-                  <CopyRow
-                    label={account.gatewayUrl ? "Link" : "Username"}
-                    value={account.gatewayUrl || account.username || account.email || "-"}
-                    copied={copiedKey === `${productIndex}-${accountIndex}-primary`}
-                    onCopy={() => onCopy(`${productIndex}-${accountIndex}-primary`, account.gatewayUrl || account.username || account.email)}
-                  />
+                  {account.gatewayUrl ? (
+                    <GatewayLinkRow url={account.gatewayUrl} />
+                  ) : (
+                    <CopyRow
+                      label="Username"
+                      value={account.username || account.email || "-"}
+                      copied={copiedKey === `${productIndex}-${accountIndex}-primary`}
+                      onCopy={() => onCopy(`${productIndex}-${accountIndex}-primary`, account.username || account.email)}
+                    />
+                  )}
                   {!account.gatewayUrl ? (
                     <CopyRow
                       label="Password"
@@ -497,6 +501,23 @@ function CopyRow({ label, value, copied, onCopy }: { label: string; value: strin
         {copied ? text.copied : <Clipboard className="h-3.5 w-3.5" />}
       </span>
     </button>
+  );
+}
+
+function GatewayLinkRow({ url }: { url: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="mt-2 flex w-full items-center gap-2 rounded-md border border-emerald-300/25 bg-emerald-300/10 p-2 text-left transition hover:border-emerald-300/50 hover:bg-emerald-300/15"
+    >
+      <span className="w-20 shrink-0 text-xs font-semibold text-zinc-500">Link</span>
+      <code className="min-w-0 flex-1 break-all font-sans text-sm font-bold text-emerald-200">{url}</code>
+      <span className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md bg-emerald-300 px-2 text-[11px] font-bold text-black">
+        <ExternalLink className="h-3.5 w-3.5" />
+      </span>
+    </a>
   );
 }
 

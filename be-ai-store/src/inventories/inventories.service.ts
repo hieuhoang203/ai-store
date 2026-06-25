@@ -92,6 +92,8 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
+    await this.refreshVariantDisplayStock(tx, variantId);
+
     return inventoryIds;
   }
 
@@ -330,6 +332,14 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
       });
 
       if (!inventories.length) {
+        const items = await tx.orderItem.findMany({
+          where: { orderId, isDeleted: false },
+          select: { variantId: true },
+        });
+        const variantIds = Array.from(new Set(items.map((item) => item.variantId)));
+        for (const variantId of variantIds) {
+          await this.refreshVariantDisplayStock(tx, variantId);
+        }
         return soldInviteInventories;
       }
 
@@ -349,9 +359,17 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
         orderBy: { createdAt: 'asc' },
       });
 
+      const items = await tx.orderItem.findMany({
+        where: { orderId, isDeleted: false },
+        select: { variantId: true },
+      });
+      const variantIds = Array.from(new Set(items.map((item) => item.variantId)));
+      for (const variantId of variantIds) {
+        await this.refreshVariantDisplayStock(tx, variantId);
+      }
+
       return [...soldInviteInventories, ...standardInventories];
     });
-
   }
 
   async releaseReservationForOrder(orderId: string) {
@@ -366,7 +384,17 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
       select: { id: true, variantId: true },
     });
 
-    if (!reservedInventories.length) return releasedSupplierReservations + releasedInviteReservations;
+    if (!reservedInventories.length) {
+      const items = await this.prisma.orderItem.findMany({
+        where: { orderId, isDeleted: false },
+        select: { variantId: true },
+      });
+      const variantIds = Array.from(new Set(items.map((item) => item.variantId)));
+      for (const variantId of variantIds) {
+        await this.refreshVariantDisplayStock(this.prisma, variantId);
+      }
+      return releasedSupplierReservations + releasedInviteReservations;
+    }
 
     const released = await this.prisma.inventory.updateMany({
       where: { id: { in: reservedInventories.map((inventory) => inventory.id) } },
@@ -379,6 +407,15 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
+    const items = await this.prisma.orderItem.findMany({
+      where: { orderId, isDeleted: false },
+      select: { variantId: true },
+    });
+    const variantIds = Array.from(new Set(items.map((item) => item.variantId)));
+    for (const variantId of variantIds) {
+      await this.refreshVariantDisplayStock(this.prisma, variantId);
+    }
+
     return releasedSupplierReservations + releasedInviteReservations + released.count;
   }
 
@@ -390,7 +427,7 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
         reservedUntil: { lt: now },
         isDeleted: false,
       },
-      select: { id: true, reservedOrderId: true },
+      select: { id: true, reservedOrderId: true, variantId: true },
       take: 500,
     });
 
@@ -428,6 +465,13 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
         reservedOrderId: null,
       },
     });
+
+    if (released.count) {
+      const uniqueVariantIds = Array.from(new Set(releasableReservations.map((r) => r.variantId)));
+      for (const variantId of uniqueVariantIds) {
+        await this.refreshVariantDisplayStock(this.prisma, variantId);
+      }
+    }
 
     this.logger.log(`Released ${released.count} expired inventory reservations`);
     return releasedInviteReservations + released.count;
@@ -571,6 +615,8 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
+    await this.refreshVariantDisplayStock(tx, variantId);
+
     return Array.from({ length: quantity }, () => inventory.id);
   }
 
@@ -645,30 +691,36 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
 
   private async releaseExpiredInviteLinkReservations(now: Date) {
     const released = await this.prisma.$transaction(async (tx) => {
-      const inventories = await tx.$queryRaw<Array<{ id: string; metadata: Prisma.JsonValue }>>`
-        SELECT "id", "metadata"
+      const inventories = await tx.$queryRaw<Array<{ id: string; variant_id: string; metadata: Prisma.JsonValue }>>`
+        SELECT "id", "variant_id", "metadata"
         FROM "inventories"
         WHERE "status" = 'AVAILABLE'::"InventoryStatus"
           AND "is_deleted" = false
           AND "metadata" ->> 'inventoryType' = 'INVITE_LINK'
         FOR UPDATE
       `;
-      let released = 0;
+      let releasedCount = 0;
+      const updatedVariantIds = new Set<string>();
 
       for (const inventory of inventories) {
         const metadata = this.normalizeMetadata(inventory.metadata);
         const reservedSlots = this.toReservedSlots(metadata.reservedSlots);
         const nextReservedSlots = this.cleanReservedSlots(reservedSlots, now);
-        released += reservedSlots.length - nextReservedSlots.length;
+        releasedCount += reservedSlots.length - nextReservedSlots.length;
         if (nextReservedSlots.length === reservedSlots.length) continue;
 
         await tx.inventory.update({
           where: { id: inventory.id },
           data: { metadata: { ...metadata, reservedSlots: nextReservedSlots } },
         });
+        updatedVariantIds.add(inventory.variant_id);
       }
 
-      return released;
+      for (const variantId of updatedVariantIds) {
+        await this.refreshVariantDisplayStock(tx, variantId);
+      }
+
+      return releasedCount;
     });
 
     return released || 0;
@@ -728,15 +780,40 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
     return Number.isSafeInteger(number) && number > 0 ? number : 0;
   }
 
-  private async refreshVariantDisplayStock(tx: TransactionClient, variantId: string) {
-    const aggregate = await tx.supplierVariant.aggregate({
+  async refreshVariantDisplayStock(tx: TransactionClient, variantId: string) {
+    const supplierAggregate = await tx.supplierVariant.aggregate({
       where: { variantId, active: true, supplier: { active: true } },
       _sum: { availableQuantity: true, reservedQuantity: true },
     });
-    const displayStock = Math.max(
-      Number(aggregate._sum.availableQuantity || 0) - Number(aggregate._sum.reservedQuantity || 0),
+    const supplierStock = Math.max(
+      Number(supplierAggregate._sum.availableQuantity || 0) - Number(supplierAggregate._sum.reservedQuantity || 0),
       0,
     );
+
+    const standardInventories = await tx.inventory.findMany({
+      where: {
+        variantId,
+        status: InventoryStatus.AVAILABLE,
+        isDeleted: false,
+      },
+      select: { metadata: true },
+    });
+
+    const now = new Date();
+    const standardStock = standardInventories.reduce((sum, inventory) => {
+      const metadata = this.normalizeMetadata(inventory.metadata);
+      if (metadata.inventoryType !== 'INVITE_LINK') {
+        return sum + 1;
+      }
+
+      const maxUses = this.toSafeInteger(metadata.maxUses);
+      const usedSlots = this.toSafeInteger(metadata.usedSlots);
+      const reservedSlots = this.cleanReservedSlots(metadata.reservedSlots, now);
+      const reservedCount = reservedSlots.reduce((total, slot) => total + slot.quantity, 0);
+      return sum + Math.max(maxUses - usedSlots - reservedCount, 0);
+    }, 0);
+
+    const displayStock = supplierStock + standardStock;
 
     await tx.productVariant.update({
       where: { id: variantId },

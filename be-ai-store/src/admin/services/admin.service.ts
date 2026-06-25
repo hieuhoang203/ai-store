@@ -5,6 +5,7 @@ import { InventoryStatus, OrderStatus, PaymentStatus } from '../models/admin-enu
 import { PrismaService } from '../../database/prisma.service';
 import { DeliveriesService } from '../../deliveries/deliveries.service';
 import { InventoryPasswordService } from '../../inventories/inventory-password.service';
+import { InventoriesService } from '../../inventories/inventories.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { ADMIN_ENTITIES, ADMIN_ENTITY_MAP } from '../models/admin-entity.model';
 import {
@@ -33,6 +34,7 @@ export class AdminService {
     private readonly inventoryPasswordService: InventoryPasswordService,
     private readonly notificationsService: NotificationsService,
     private readonly redisService: RedisService,
+    private readonly inventoriesService: InventoriesService,
   ) {}
 
   async getEntities(): Promise<AdminEntitySummary[]> {
@@ -95,6 +97,13 @@ export class AdminService {
     await this.auditCouponChange(entityKey, AuditAction.COUPON_CREATE, null, record);
     await this.invalidateCategoryCache(entityKey);
 
+    if (entityKey === 'inventories' && record && typeof record === 'object' && 'variantId' in record) {
+      const variantId = String((record as any).variantId || '');
+      if (variantId) {
+        await this.inventoriesService.refreshVariantDisplayStock(this.prisma, variantId);
+      }
+    }
+
     const serialized = this.serializeRecord(config, record);
     this.decryptInventoryPassword(entityKey, serialized);
     return serialized;
@@ -109,6 +118,16 @@ export class AdminService {
     const couponPreviousRecord = entityKey === 'coupons' ? await this.repository.detail(config, recordId) : null;
     this.normalizeCouponPayload(entityKey, data);
     this.encryptInventoryPassword(entityKey, data);
+
+    let previousVariantId: string | null = null;
+    if (entityKey === 'inventories') {
+      const currentInventory = await this.prisma.inventory.findUnique({
+        where: { id: recordId },
+        select: { variantId: true },
+      });
+      previousVariantId = currentInventory?.variantId || null;
+    }
+
     const record = await this.repository.update(config, recordId, data);
 
     if (entityKey === 'users' && roleId !== undefined) {
@@ -123,6 +142,18 @@ export class AdminService {
     );
     await this.invalidateCategoryCache(entityKey);
 
+    if (entityKey === 'inventories') {
+      if (previousVariantId) {
+        await this.inventoriesService.refreshVariantDisplayStock(this.prisma, previousVariantId);
+      }
+      if (record && typeof record === 'object' && 'variantId' in record) {
+        const newVariantId = String((record as any).variantId || '');
+        if (newVariantId && newVariantId !== previousVariantId) {
+          await this.inventoriesService.refreshVariantDisplayStock(this.prisma, newVariantId);
+        }
+      }
+    }
+
     const serialized = this.serializeRecord(config, record);
     this.decryptInventoryPassword(entityKey, serialized);
     return serialized;
@@ -134,6 +165,14 @@ export class AdminService {
     const removed = await this.repository.remove(config, recordId);
     await this.auditCouponChange(entityKey, AuditAction.COUPON_DELETE, previousRecord, removed);
     await this.invalidateCategoryCache(entityKey);
+
+    if (entityKey === 'inventories' && removed && typeof removed === 'object' && 'variantId' in removed) {
+      const variantId = String((removed as any).variantId || '');
+      if (variantId) {
+        await this.inventoriesService.refreshVariantDisplayStock(this.prisma, variantId);
+      }
+    }
+
     return this.serializeRecord(config, removed);
   }
 

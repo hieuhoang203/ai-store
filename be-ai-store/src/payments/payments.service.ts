@@ -215,45 +215,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    const soldInventories = await this.inventoriesService.markReservedInventoriesSold(payment.orderId);
-    const soldInventoriesByVariant = new Map<string, typeof soldInventories>();
-    for (const inventory of soldInventories) {
-      const inventories = soldInventoriesByVariant.get(inventory.variantId) || [];
-      inventories.push(inventory);
-      soldInventoriesByVariant.set(inventory.variantId, inventories);
-    }
-
-    for (const item of payment.order.items) {
-      const existingDeliveryInventoryIds = new Set(item.deliveries.map((delivery) => delivery.inventoryId));
-      const inventories = soldInventoriesByVariant.get(item.variantId) || [];
-      const missingInventories = inventories
-        .filter((inventory) => !existingDeliveryInventoryIds.has(inventory.id))
-        .slice(0, Math.max(item.quantity - item.deliveries.length, 0));
-
-      for (let index = 0; index < missingInventories.length; index += 1) {
-        const inventory = missingInventories[index];
-        if (!item.inventoryId && index === 0 && inventory) {
-          await this.prisma.orderItem.update({
-            where: { id: item.id },
-            data: { inventoryId: inventory.id },
-          });
-        }
-
-        if (inventory) {
-          await this.deliveriesService.createDelivery(item.id, inventory.id);
-        }
-      }
-
-      if (item.deliveries.length + missingInventories.length < item.quantity) {
-        throw new BadRequestException('Reserved inventory is missing for paid order');
-      }
-    }
-
-    await this.prisma.order.update({
-      where: { id: payment.orderId },
-      data: { status: OrderStatus.DELIVERED },
-    });
-    await this.deliveriesService.sendOrderDeliveryMessage(payment.orderId);
+    await this.inventoriesService.createSupplierRequestsForPaidOrder(payment.orderId);
     await Promise.all(
       Array.from(new Set(payment.order.items.map((item) => item.variantId))).map((variantId) =>
         this.inventoriesService.announceOutOfStockIfNeeded(variantId),
@@ -415,7 +377,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       await this.prisma.order.updateMany({
         where: {
           id: payment.orderId,
-          status: OrderStatus.PENDING,
+          status: OrderStatus.PENDING_PAYMENT,
         },
         data: {
           status: OrderStatus.CANCELLED,

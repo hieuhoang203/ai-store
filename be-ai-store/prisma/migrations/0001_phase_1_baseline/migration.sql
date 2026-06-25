@@ -1,3 +1,0 @@
--- Baseline marker for an existing production schema.
--- This migration is intentionally empty and should be resolved as applied
--- on databases that already contain the Phase 1 tables.

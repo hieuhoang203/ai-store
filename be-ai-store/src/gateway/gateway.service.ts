@@ -26,27 +26,91 @@ export class GatewayService {
     this.assertTokenShape(token);
     await this.assertRateLimit(token, context.ipAddress);
 
-    const delivery = await this.findDeliveryByToken(token);
-    const metadata = this.normalizeMetadata(delivery.metadata);
+    const gateway = await this.findGatewayByToken(token);
+    const metadata = this.normalizeMetadata(gateway.payload as Prisma.JsonValue);
 
-    await this.assertDeliveryUsable(delivery, metadata, context);
+    await this.assertGatewayUsable(gateway, metadata, context);
 
-    const inventoryMetadata = this.normalizeMetadata(delivery.inventory.metadata);
-    if (inventoryMetadata.inventoryType !== 'INVITE_LINK') {
-      await this.logGatewayEvent('GATEWAY_INVALID_INVENTORY', delivery.id, context, { token });
+    const encryptedInviteLink = String(metadata.encryptedInviteLink || '');
+    if (!encryptedInviteLink) {
+      await this.logGatewayEvent('GATEWAY_MISSING_INVITE_LINK', gateway.id, context, { token });
       throw new NotFoundException('Gateway link not found');
     }
 
-    const encryptedInviteLink = String(inventoryMetadata.encryptedInviteLink || '');
     const inviteLink = this.inventoryPasswordService.decrypt(encryptedInviteLink);
     if (!inviteLink) {
-      await this.logGatewayEvent('GATEWAY_MISSING_INVITE_LINK', delivery.id, context, { token });
+      await this.logGatewayEvent('GATEWAY_MISSING_INVITE_LINK', gateway.id, context, { token });
       throw new GoneException('Gateway link is unavailable');
     }
 
-    await this.recordAccess(delivery.id, metadata, context);
+    await this.recordAccess(gateway, metadata, context);
     await this.redis.client.del(this.getTokenCacheKey(token)).catch(() => undefined);
     return inviteLink;
+  }
+
+  private async findGatewayByToken(token: string) {
+    const cacheKey = this.getTokenCacheKey(token);
+    const cachedGatewayId = await this.redis.client.get(cacheKey).catch(() => null);
+    const gatewayId = cachedGatewayId || await this.findGatewayIdByToken(token);
+
+    if (!gatewayId) {
+      throw new NotFoundException('Gateway link not found');
+    }
+
+    if (!cachedGatewayId) {
+      await this.redis.client.set(cacheKey, gatewayId, 'EX', 300).catch(() => undefined);
+    }
+
+    if (gatewayId.startsWith('resource:')) {
+      const id = gatewayId.replace(/^resource:/, '');
+      const resource = await this.prisma.fulfillmentResource.findUniqueOrThrow({
+        where: { id },
+        include: {
+          fulfillment: {
+            include: {
+              orderItem: {
+                include: { order: true },
+              },
+            },
+          },
+        },
+      });
+
+      return {
+        id: resource.id,
+        kind: 'resource' as const,
+        status: resource.fulfillment.status,
+        payload: resource.payload,
+        userId: resource.fulfillment.orderItem.order.userId,
+      };
+    }
+
+    const delivery = await this.findDeliveryByToken(token);
+    return {
+      id: delivery.id,
+      kind: 'delivery' as const,
+      status: delivery.status,
+      payload: {
+        ...this.normalizeMetadata(delivery.metadata),
+        encryptedInviteLink: String(this.normalizeMetadata(delivery.inventory.metadata).encryptedInviteLink || ''),
+      } as Prisma.JsonObject,
+      userId: delivery.orderItem.order.userId,
+    };
+  }
+
+  private async findGatewayIdByToken(token: string) {
+    const resourceRows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "fulfillment_resources"
+      WHERE "payload" ->> 'gatewayToken' = ${token}
+      LIMIT 1
+    `;
+    if (resourceRows[0]?.id) {
+      return `resource:${resourceRows[0].id}`;
+    }
+
+    const deliveryId = await this.findDeliveryIdByToken(token);
+    return deliveryId ? `delivery:${deliveryId}` : null;
   }
 
   private async findDeliveryByToken(token: string) {
@@ -63,7 +127,7 @@ export class GatewayService {
     }
 
     return this.prisma.delivery.findUniqueOrThrow({
-      where: { id: deliveryId },
+      where: { id: deliveryId.replace(/^delivery:/, '') },
       include: {
         inventory: true,
         orderItem: {
@@ -125,8 +189,50 @@ export class GatewayService {
     }
   }
 
+  private async assertGatewayUsable(
+    gateway: Awaited<ReturnType<GatewayService['findGatewayByToken']>>,
+    metadata: Record<string, unknown>,
+    context: AccessContext,
+  ) {
+    const isDelivered =
+      gateway.kind === 'resource'
+        ? gateway.status === 'DELIVERED'
+        : gateway.status === DeliveryStatus.DELIVERED;
+    if (!isDelivered || metadata.deliveryType !== 'LINK_GATEWAY') {
+      await this.logGatewayEvent('GATEWAY_NOT_DELIVERED', gateway.id, context);
+      throw new GoneException('Gateway link is not active');
+    }
+
+    if (metadata.locked === true) {
+      await this.logGatewayEvent('GATEWAY_LOCKED', gateway.id, context, {
+        lockReason: metadata.lockReason || null,
+      });
+      await this.notifyUser(gateway.userId, 'Link nhan dich vu da tam khoa vi ly do bao mat.');
+      throw new ForbiddenException('Gateway link is locked');
+    }
+
+    const expiresAt = typeof metadata.expiresAt === 'string' ? new Date(metadata.expiresAt) : null;
+    if (expiresAt && expiresAt.getTime() <= Date.now()) {
+      await this.logGatewayEvent('GATEWAY_EXPIRED', gateway.id, context, {
+        expiresAt: metadata.expiresAt,
+      });
+      await this.notifyUser(gateway.userId, 'Link nhan dich vu cua ban da het han.');
+      throw new GoneException('Gateway link is expired');
+    }
+
+    const usedCount = this.toSafeInteger(metadata.usedCount);
+    const maxAccess = this.toSafeInteger(metadata.maxAccess);
+    if (maxAccess > 0 && usedCount >= maxAccess) {
+      await this.logGatewayEvent('GATEWAY_MAX_ACCESS_REACHED', gateway.id, context, {
+        usedCount,
+        maxAccess,
+      });
+      throw new ForbiddenException('Gateway access limit reached');
+    }
+  }
+
   private async recordAccess(
-    deliveryId: string,
+    gateway: Awaited<ReturnType<GatewayService['findGatewayByToken']>>,
     metadata: Record<string, unknown>,
     context: AccessContext,
   ) {
@@ -139,11 +245,18 @@ export class GatewayService {
       lastAccessAt: now,
     };
 
-    await this.prisma.delivery.update({
-      where: { id: deliveryId },
-      data: { metadata: nextMetadata },
-    });
-    await this.logGatewayEvent('GATEWAY_ACCESSED', deliveryId, context, {
+    if (gateway.kind === 'resource') {
+      await this.prisma.fulfillmentResource.update({
+        where: { id: gateway.id },
+        data: { payload: nextMetadata },
+      });
+    } else {
+      await this.prisma.delivery.update({
+        where: { id: gateway.id },
+        data: { metadata: nextMetadata },
+      });
+    }
+    await this.logGatewayEvent('GATEWAY_ACCESSED', gateway.id, context, {
       usedCount,
     });
   }

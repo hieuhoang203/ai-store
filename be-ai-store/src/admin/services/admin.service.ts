@@ -1,8 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
-import { AuditAction, Prisma, TicketStatus } from '../../../generated/prisma/client.js';
+import { AuditAction, DeliveryMethod, Prisma, TicketStatus } from '../../../generated/prisma/client.js';
 import { InventoryStatus, OrderStatus, PaymentStatus } from '../models/admin-enums.model';
 import { PrismaService } from '../../database/prisma.service';
+import { DeliveriesService } from '../../deliveries/deliveries.service';
 import { InventoryPasswordService } from '../../inventories/inventory-password.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { ADMIN_ENTITIES, ADMIN_ENTITY_MAP } from '../models/admin-entity.model';
@@ -28,6 +29,7 @@ export class AdminService {
   constructor(
     private readonly repository: AdminRepository,
     private readonly prisma: PrismaService,
+    private readonly deliveriesService: DeliveriesService,
     private readonly inventoryPasswordService: InventoryPasswordService,
     private readonly notificationsService: NotificationsService,
     private readonly redisService: RedisService,
@@ -77,7 +79,14 @@ export class AdminService {
     const data = this.sanitizePayload(config, payload, 'create');
     this.normalizeCouponPayload(entityKey, data);
     this.encryptInventoryPassword(entityKey, data);
-    const record = await this.repository.create(config, data);
+    const record =
+      entityKey === 'fulfillment-resources'
+        ? await this.deliveriesService.createFulfillmentResource(
+            String(data.fulfillmentId),
+            String(data.type) as DeliveryMethod,
+            this.toInputJsonValue(data.payload),
+          )
+        : await this.repository.create(config, data);
 
     if (entityKey === 'users' && roleId) {
       await this.assignUserRole(String((record as Record<string, unknown>).id), String(roleId));
@@ -473,6 +482,10 @@ export class AdminService {
     if (typeof data.code === 'string') {
       data.code = data.code.trim().toUpperCase();
     }
+  }
+
+  private toInputJsonValue(value: unknown) {
+    return (value === undefined ? {} : value) as Prisma.InputJsonValue;
   }
 
   private async auditCouponChange(

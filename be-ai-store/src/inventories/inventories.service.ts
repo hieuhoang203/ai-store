@@ -1,5 +1,12 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { Inventory, InventoryStatus, PaymentStatus, Prisma } from '../../generated/prisma/client.js';
+import {
+  Inventory,
+  InventoryStatus,
+  OrderStatus,
+  PaymentStatus,
+  Prisma,
+  SupplierRequestStatus,
+} from '../../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { InventoryPasswordService } from './inventory-password.service';
@@ -88,6 +95,228 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
     return inventoryIds;
   }
 
+  async reserveSupplierAvailability(
+    tx: TransactionClient,
+    {
+      variantId,
+      quantity,
+    }: {
+      variantId: string;
+      quantity: number;
+      userId: string;
+      orderId: string;
+      reservedUntil: Date;
+    },
+  ) {
+    const supplierVariants = await tx.$queryRaw<Array<{ id: string; available_quantity: number; reserved_quantity: number }>>`
+      SELECT sv."id", sv."available_quantity", sv."reserved_quantity"
+      FROM "supplier_variants" sv
+      INNER JOIN "suppliers" s ON s."id" = sv."supplier_id"
+      WHERE sv."variant_id" = ${variantId}::uuid
+        AND sv."active" = true
+        AND s."active" = true
+        AND sv."available_quantity" - sv."reserved_quantity" > 0
+      ORDER BY
+        COALESCE(s."success_rate", 0) DESC,
+        COALESCE(s."avg_delivery_minutes", 2147483647) ASC,
+        sv."created_at" ASC
+      FOR UPDATE OF sv SKIP LOCKED
+    `;
+
+    let remaining = quantity;
+    const reservations: Array<{ supplierVariantId: string; quantity: number }> = [];
+
+    for (const supplierVariant of supplierVariants) {
+      if (remaining <= 0) break;
+      const reservable = Math.max(
+        Number(supplierVariant.available_quantity) - Number(supplierVariant.reserved_quantity),
+        0,
+      );
+      const reservedQuantity = Math.min(reservable, remaining);
+      if (!reservedQuantity) continue;
+
+      await tx.supplierVariant.update({
+        where: { id: supplierVariant.id },
+        data: { reservedQuantity: { increment: reservedQuantity } },
+      });
+      reservations.push({ supplierVariantId: supplierVariant.id, quantity: reservedQuantity });
+      remaining -= reservedQuantity;
+    }
+
+    if (remaining > 0) {
+      throw new BadRequestException('Khong du so luong tai nguyen co the ban.');
+    }
+
+    await this.refreshVariantDisplayStock(tx, variantId);
+    return reservations;
+  }
+
+  async assertSupplierAvailability(
+    tx: TransactionClient,
+    variantId: string,
+    quantity: number,
+  ) {
+    const aggregate = await tx.supplierVariant.aggregate({
+      where: {
+        variantId,
+        active: true,
+        supplier: { active: true },
+      },
+      _sum: { availableQuantity: true, reservedQuantity: true },
+    });
+    const available =
+      Number(aggregate._sum.availableQuantity || 0) -
+      Number(aggregate._sum.reservedQuantity || 0);
+
+    if (available < quantity) {
+      throw new BadRequestException('Khong du so luong tai nguyen co the ban.');
+    }
+  }
+
+  async releaseSupplierReservationForOrder(orderId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const items = await tx.orderItem.findMany({
+        where: { orderId, isDeleted: false },
+        include: {
+          supplierRequestItems: {
+            include: { request: true },
+          },
+        },
+      });
+
+      let released = 0;
+      for (const item of items) {
+        const requests = item.supplierRequestItems.filter(
+          (requestItem) =>
+            requestItem.request.status === SupplierRequestStatus.PENDING ||
+            requestItem.request.status === SupplierRequestStatus.CANCELLED,
+        );
+        for (const requestItem of requests) {
+          const supplierVariant = await tx.supplierVariant.findFirst({
+            where: {
+              supplierId: requestItem.request.supplierId,
+              variantId: item.variantId,
+            },
+          });
+          if (!supplierVariant) continue;
+
+          await tx.supplierVariant.update({
+            where: { id: supplierVariant.id },
+            data: { reservedQuantity: { decrement: Math.min(requestItem.quantity, supplierVariant.reservedQuantity) } },
+          });
+          released += requestItem.quantity;
+        }
+        await this.refreshVariantDisplayStock(tx, item.variantId);
+      }
+
+      return released;
+    });
+  }
+
+  async createSupplierRequestsForPaidOrder(orderId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUniqueOrThrow({
+        where: { id: orderId },
+        include: {
+          items: {
+            where: { isDeleted: false },
+            include: { fulfillments: true },
+          },
+        },
+      });
+
+      const requestItemsBySupplier = new Map<string, Array<{ orderItemId: string; quantity: number; variantId: string }>>();
+
+      for (const item of order.items) {
+        const existingRequestCount = await tx.supplierRequestItem.count({
+          where: { orderItemId: item.id },
+        });
+        if (existingRequestCount) continue;
+
+        let remaining = item.quantity;
+        const supplierVariants = await tx.$queryRaw<Array<{
+          id: string;
+          supplier_id: string;
+          available_quantity: number;
+          reserved_quantity: number;
+        }>>`
+          SELECT sv."id", sv."supplier_id", sv."available_quantity", sv."reserved_quantity"
+          FROM "supplier_variants" sv
+          INNER JOIN "suppliers" s ON s."id" = sv."supplier_id"
+          WHERE sv."variant_id" = ${item.variantId}::uuid
+            AND sv."active" = true
+            AND s."active" = true
+            AND sv."available_quantity" - sv."reserved_quantity" > 0
+          ORDER BY
+            COALESCE(s."success_rate", 0) DESC,
+            COALESCE(s."avg_delivery_minutes", 2147483647) ASC,
+            sv."created_at" ASC
+          FOR UPDATE OF sv SKIP LOCKED
+        `;
+
+        for (const supplierVariant of supplierVariants) {
+          if (remaining <= 0) break;
+          const availableQuantity = Math.max(
+            Number(supplierVariant.available_quantity) - Number(supplierVariant.reserved_quantity),
+            0,
+          );
+          const fulfilledQuantity = Math.min(remaining, availableQuantity);
+          if (!fulfilledQuantity) continue;
+
+          await tx.supplierVariant.update({
+            where: { id: supplierVariant.id },
+            data: {
+              availableQuantity: { decrement: fulfilledQuantity },
+              soldQuantity: { increment: fulfilledQuantity },
+            },
+          });
+
+          const bucket = requestItemsBySupplier.get(supplierVariant.supplier_id) || [];
+          bucket.push({ orderItemId: item.id, quantity: fulfilledQuantity, variantId: item.variantId });
+          requestItemsBySupplier.set(supplierVariant.supplier_id, bucket);
+          remaining -= fulfilledQuantity;
+        }
+
+        if (remaining > 0) {
+          throw new BadRequestException('Reserved supplier capacity is missing for paid order');
+        }
+
+        const existingFulfillmentCount = item.fulfillments.length;
+        for (let index = existingFulfillmentCount; index < item.quantity; index += 1) {
+          await tx.fulfillment.create({
+            data: {
+              orderItemId: item.id,
+            },
+          });
+        }
+        await this.refreshVariantDisplayStock(tx, item.variantId);
+      }
+
+      for (const [supplierId, requestItems] of requestItemsBySupplier.entries()) {
+        const request = await tx.supplierRequest.create({
+          data: {
+            orderId,
+            supplierId,
+            status: SupplierRequestStatus.PENDING,
+          },
+        });
+
+        await tx.supplierRequestItem.createMany({
+          data: requestItems.map((item) => ({
+            requestId: request.id,
+            orderItemId: item.orderItemId,
+            quantity: item.quantity,
+          })),
+        });
+      }
+
+      await tx.order.update({
+        where: { id: order.id },
+        data: { status: OrderStatus.WAITING_SUPPLIER },
+      });
+    });
+  }
+
   async markReservedInventoriesSold(orderId: string) {
     return this.prisma.$transaction(async (tx) => {
       const soldInviteInventories = await this.markInviteLinkReservationSold(tx, orderId);
@@ -126,6 +355,7 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
   }
 
   async releaseReservationForOrder(orderId: string) {
+    const releasedSupplierReservations = await this.releaseSupplierReservationForOrder(orderId);
     const releasedInviteReservations = await this.releaseInviteLinkReservationForOrder(orderId);
     const reservedInventories = await this.prisma.inventory.findMany({
       where: {
@@ -136,7 +366,7 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
       select: { id: true, variantId: true },
     });
 
-    if (!reservedInventories.length) return releasedInviteReservations;
+    if (!reservedInventories.length) return releasedSupplierReservations + releasedInviteReservations;
 
     const released = await this.prisma.inventory.updateMany({
       where: { id: { in: reservedInventories.map((inventory) => inventory.id) } },
@@ -149,7 +379,7 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    return releasedInviteReservations + released.count;
+    return releasedSupplierReservations + releasedInviteReservations + released.count;
   }
 
   async releaseExpiredReservations(now = new Date()) {
@@ -231,6 +461,17 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
   }
 
   async announceOutOfStockIfNeeded(variantId: string) {
+    const supplierStock = await this.prisma.supplierVariant.aggregate({
+      where: { variantId, active: true, supplier: { active: true } },
+      _sum: { availableQuantity: true, reservedQuantity: true },
+    });
+    const supplierAvailable =
+      Number(supplierStock._sum.availableQuantity || 0) -
+      Number(supplierStock._sum.reservedQuantity || 0);
+    if (supplierAvailable > 0) {
+      return;
+    }
+
     const inventoryCount = await this.prisma.inventory.count({
       where: {
         variantId,
@@ -485,5 +726,21 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
   private toSafeInteger(value: unknown) {
     const number = Number(value || 0);
     return Number.isSafeInteger(number) && number > 0 ? number : 0;
+  }
+
+  private async refreshVariantDisplayStock(tx: TransactionClient, variantId: string) {
+    const aggregate = await tx.supplierVariant.aggregate({
+      where: { variantId, active: true, supplier: { active: true } },
+      _sum: { availableQuantity: true, reservedQuantity: true },
+    });
+    const displayStock = Math.max(
+      Number(aggregate._sum.availableQuantity || 0) - Number(aggregate._sum.reservedQuantity || 0),
+      0,
+    );
+
+    await tx.productVariant.update({
+      where: { id: variantId },
+      data: { displayStock },
+    });
   }
 }

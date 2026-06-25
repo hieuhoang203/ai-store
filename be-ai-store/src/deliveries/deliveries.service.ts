@@ -1,7 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomInt } from 'node:crypto';
-import { AuditAction, DeliveryStatus, NotificationType, Prisma } from '../../generated/prisma/client.js';
+import {
+  AuditAction,
+  DeliveryMethod,
+  DeliveryStatus,
+  FulfillmentStatus,
+  NotificationType,
+  OrderStatus,
+  Prisma,
+  SupplierRequestStatus,
+} from '../../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service';
 import { InventoryPasswordService } from '../inventories/inventory-password.service';
 import { TelegramService } from '../telegram/telegram.service';
@@ -96,6 +105,51 @@ export class DeliveriesService {
     return content;
   }
 
+  async createFulfillmentResource(
+    fulfillmentId: string,
+    type: DeliveryMethod,
+    payload: Prisma.InputJsonValue,
+  ) {
+    const fulfillment = await this.prisma.fulfillment.findUniqueOrThrow({
+      where: { id: fulfillmentId },
+      include: { orderItem: true },
+    });
+    const normalizedPayload = this.normalizeInputPayload(payload);
+    const preparedPayload =
+      type === DeliveryMethod.LINK_INVITE
+        ? await this.prepareGatewayPayload(normalizedPayload)
+        : normalizedPayload;
+    const now = new Date();
+
+    const resource = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.fulfillmentResource.create({
+        data: {
+          fulfillmentId,
+          type,
+          payload: preparedPayload,
+        },
+      });
+
+      await tx.fulfillment.update({
+        where: { id: fulfillmentId },
+        data: {
+          status: FulfillmentStatus.DELIVERED,
+          deliveredAt: now,
+        },
+      });
+
+      await tx.order.update({
+        where: { id: fulfillment.orderItem.orderId },
+        data: { status: OrderStatus.FULFILLING },
+      });
+
+      return created;
+    });
+
+    await this.completeOrderIfFullyDelivered(fulfillment.orderItem.orderId);
+    return resource;
+  }
+
   private async buildDeliveryMessagePayload(orderId: string): Promise<DeliveryMessagePayload> {
     const order = await this.prisma.order.findUniqueOrThrow({
       where: { id: orderId },
@@ -104,6 +158,10 @@ export class DeliveriesService {
           orderBy: { createdAt: 'asc' },
           include: {
             variant: { include: { product: true } },
+            fulfillments: {
+              orderBy: { createdAt: 'asc' },
+              include: { resources: true },
+            },
             deliveries: {
               where: { isDeleted: false },
               orderBy: { createdAt: 'asc' },
@@ -125,14 +183,21 @@ export class DeliveriesService {
         serviceName: item.variant.product.name,
         duration: this.formatDuration(item.variant.durationDays),
         warrantyDays: item.variant.warrantyDays,
-            accounts: item.deliveries.map((delivery) => ({
-              email: delivery.inventory.accountEmail,
-              password: this.isInviteLinkDelivery(delivery)
-                ? null
-                : this.inventoryPasswordService.decrypt(delivery.inventory.encryptedPassword),
-              gatewayUrl: this.getGatewayUrl(delivery.metadata),
-            })),
+        accounts: [
+          ...item.fulfillments
+            .filter((fulfillment) => fulfillment.status === FulfillmentStatus.DELIVERED)
+            .flatMap((fulfillment) =>
+              fulfillment.resources.map((resource) => this.payloadToDeliveryAccount(resource.payload, resource.type)),
+            ),
+          ...item.deliveries.map((delivery) => ({
+            email: delivery.inventory.accountEmail,
+            password: this.isInviteLinkDelivery(delivery)
+              ? null
+              : this.inventoryPasswordService.decrypt(delivery.inventory.encryptedPassword),
+            gatewayUrl: this.getGatewayUrl(delivery.metadata),
           })),
+        ],
+      })),
     };
   }
 
@@ -152,6 +217,10 @@ export class DeliveriesService {
         SELECT "id"
         FROM "deliveries"
         WHERE "metadata" ->> 'gatewayToken' = ${token}
+        UNION ALL
+        SELECT "id"
+        FROM "fulfillment_resources"
+        WHERE "payload" ->> 'gatewayToken' = ${token}
         LIMIT 1
       `;
 
@@ -169,6 +238,95 @@ export class DeliveriesService {
   private buildGatewayUrl(token: string) {
     const publicUrl = this.configService.get<string>('APP_PUBLIC_URL') || 'http://localhost:8903';
     return `${publicUrl.replace(/\/$/, '')}/join/${token}`;
+  }
+
+  private async prepareGatewayPayload(payload: Record<string, unknown>) {
+    const gatewayToken = await this.createUniqueGatewayToken();
+    const gatewayUrl = this.buildGatewayUrl(gatewayToken);
+    const inviteLink = typeof payload.inviteLink === 'string' ? payload.inviteLink.trim() : '';
+    const encryptedInviteLink =
+      typeof payload.encryptedInviteLink === 'string' ? payload.encryptedInviteLink.trim() : '';
+
+    const { inviteLink: _inviteLink, ...rest } = payload;
+
+    return {
+      ...rest,
+      encryptedInviteLink: inviteLink
+        ? this.inventoryPasswordService.encrypt(inviteLink)
+        : encryptedInviteLink,
+      deliveryType: 'LINK_GATEWAY',
+      gatewayToken,
+      gatewayUrl,
+      usedCount: 0,
+      maxAccess: this.toSafeInteger(payload.maxAccess) || 3,
+      firstAccessAt: null,
+      lastAccessAt: null,
+      expiresAt: this.getGatewayExpiresAt(payload),
+      locked: false,
+      lockReason: null,
+      generatedAt: new Date().toISOString(),
+    } satisfies Prisma.InputJsonObject;
+  }
+
+  private async completeOrderIfFullyDelivered(orderId: string) {
+    const order = await this.prisma.order.findUniqueOrThrow({
+      where: { id: orderId },
+      include: {
+        user: true,
+        items: {
+          where: { isDeleted: false },
+          include: { fulfillments: true },
+        },
+      },
+    });
+
+    const expectedQuantity = order.items.reduce((sum, item) => sum + item.quantity, 0);
+    const deliveredQuantity = order.items.reduce(
+      (sum, item) =>
+        sum + item.fulfillments.filter((fulfillment) => fulfillment.status === FulfillmentStatus.DELIVERED).length,
+      0,
+    );
+
+    if (expectedQuantity <= 0 || deliveredQuantity < expectedQuantity) {
+      return;
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.order.update({
+        where: { id: orderId },
+        data: { status: OrderStatus.DELIVERED },
+      }),
+      this.prisma.supplierRequest.updateMany({
+        where: { orderId, status: { in: [SupplierRequestStatus.PENDING, SupplierRequestStatus.PROCESSING] } },
+        data: { status: SupplierRequestStatus.COMPLETED, fulfilledAt: new Date() },
+      }),
+    ]);
+
+    await this.sendOrderDeliveryMessage(orderId);
+  }
+
+  private payloadToDeliveryAccount(payload: Prisma.JsonValue, type: DeliveryMethod) {
+    const normalized = this.normalizeMetadata(payload);
+
+    return {
+      email: typeof normalized.email === 'string' ? normalized.email : null,
+      username: typeof normalized.username === 'string' ? normalized.username : null,
+      password: typeof normalized.password === 'string' ? normalized.password : null,
+      gatewayUrl: typeof normalized.gatewayUrl === 'string' ? normalized.gatewayUrl : null,
+      licenseKey: typeof normalized.licenseKey === 'string' ? normalized.licenseKey : null,
+      apiKey: typeof normalized.apiKey === 'string' ? normalized.apiKey : null,
+      voucherCode: typeof normalized.voucherCode === 'string' ? normalized.voucherCode : null,
+      workspace: typeof normalized.workspace === 'string' ? normalized.workspace : null,
+      type,
+    };
+  }
+
+  private normalizeInputPayload(payload: Prisma.InputJsonValue) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return {} as Prisma.InputJsonObject;
+    }
+
+    return payload as Prisma.InputJsonObject;
   }
 
   private getGatewayExpiresAt(metadata: Record<string, unknown>) {

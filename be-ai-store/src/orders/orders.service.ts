@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  FulfillmentStatus,
   DeliveryStatus,
   InventoryStatus,
   OrderStatus,
@@ -137,22 +138,8 @@ export class OrdersService {
         });
       }
 
-      const orderItemMap = new Map(createdOrder.items.map((item) => [item.variantId, item]));
       for (const item of items) {
-        const reservedInventoryIds = await this.inventoriesService.reserveAvailableInventories(tx, {
-          variantId: item.variantId,
-          quantity: item.quantity,
-          userId: user.id,
-          orderId: createdOrder.id,
-          reservedUntil: expiresAt,
-        });
-        const orderItem = orderItemMap.get(item.variantId);
-        if (orderItem) {
-          await tx.orderItem.update({
-            where: { id: orderItem.id },
-            data: { inventoryId: reservedInventoryIds[0] },
-          });
-        }
+        await this.inventoriesService.assertSupplierAvailability(tx, item.variantId, item.quantity);
       }
 
       return { status: 'created' as const, order: createdOrder };
@@ -266,6 +253,10 @@ export class OrdersService {
           orderBy: { createdAt: 'asc' },
           include: {
             variant: { include: { product: true } },
+            fulfillments: {
+              orderBy: { createdAt: 'asc' },
+              include: { resources: true },
+            },
             deliveries: {
               where: { isDeleted: false },
               orderBy: { createdAt: 'asc' },
@@ -329,9 +320,11 @@ export class OrdersService {
                 isHidden: review.isHidden,
               }
             : null,
-          accounts: item.deliveries
-            .filter((delivery) => delivery.status === DeliveryStatus.DELIVERED)
-          .map((delivery) => {
+          accounts: [
+            ...this.presentFulfillmentResources(item.fulfillments),
+            ...item.deliveries
+              .filter((delivery) => delivery.status === DeliveryStatus.DELIVERED)
+              .map((delivery) => {
             const metadata = this.normalizeMetadata(delivery.inventory.metadata);
             const deliveryMetadata = this.normalizeMetadata(delivery.metadata);
             const gatewayUrl =
@@ -353,6 +346,7 @@ export class OrdersService {
                 deliveredAt: delivery.deliveredAt,
               };
             }),
+          ],
         };
       }),
     };
@@ -465,7 +459,7 @@ export class OrdersService {
       where: {
         userId,
         couponId,
-        status: OrderStatus.PENDING,
+        status: OrderStatus.PENDING_PAYMENT,
         paymentStatus: PaymentStatus.PENDING,
         isDeleted: false,
         createdAt: { gt: new Date(Date.now() - PAYMENT_QR_TTL_MS * 2) },
@@ -562,7 +556,7 @@ export class OrdersService {
     await tx.order.updateMany({
       where: {
         id: orderId,
-        status: OrderStatus.PENDING,
+        status: OrderStatus.PENDING_PAYMENT,
       },
       data: {
         status: OrderStatus.CANCELLED,
@@ -591,6 +585,48 @@ export class OrdersService {
       .filter((value): value is number => typeof value === 'number' && value > 0);
 
     return days.length ? Math.max(...days) : null;
+  }
+
+  private presentFulfillmentResources(
+    fulfillments: Array<{
+      status: FulfillmentStatus;
+      deliveredAt: Date | null;
+      resources: Array<{ type: string; payload: Prisma.JsonValue; createdAt: Date }>;
+    }>,
+  ) {
+    return fulfillments
+      .filter((fulfillment) => fulfillment.status === FulfillmentStatus.DELIVERED)
+      .flatMap((fulfillment) =>
+        fulfillment.resources.map((resource) => {
+          const payload = this.normalizeMetadata(resource.payload);
+          const gatewayUrl = typeof payload.gatewayUrl === 'string' ? payload.gatewayUrl : null;
+          const email =
+            typeof payload.email === 'string'
+              ? payload.email
+              : typeof payload.username === 'string'
+                ? payload.username
+                : null;
+
+          return {
+            email,
+            username: payload.username || email,
+            password: typeof payload.password === 'string' ? payload.password : null,
+            gatewayUrl,
+            inviteLink: typeof payload.inviteLink === 'string' ? payload.inviteLink : null,
+            licenseKey: typeof payload.licenseKey === 'string' ? payload.licenseKey : null,
+            apiKey: typeof payload.apiKey === 'string' ? payload.apiKey : null,
+            voucherCode: typeof payload.voucherCode === 'string' ? payload.voucherCode : null,
+            twoFactor:
+              payload.twoFactor ||
+              payload.twoFa ||
+              payload['2fa'] ||
+              payload.pass2fa ||
+              null,
+            deliveredAt: fulfillment.deliveredAt || resource.createdAt,
+            type: resource.type,
+          };
+        }),
+      );
   }
 
   private normalizeMetadata(metadata: Prisma.JsonValue | null) {

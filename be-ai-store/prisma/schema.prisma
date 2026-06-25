@@ -27,12 +27,24 @@ enum InventoryStatus {
   LOCKED
 }
 
+enum DeliveryMethod {
+  ACCOUNT
+  EMAIL_INVITE
+  LINK_INVITE
+  LICENSE_KEY
+  API_KEY
+  VOUCHER_CODE
+  MANUAL
+}
+
 enum OrderStatus {
-  PENDING
+  PENDING_PAYMENT
   PAID
+  WAITING_SUPPLIER
+  FULFILLING
   DELIVERED
+  COMPLETED
   CANCELLED
-  REFUNDED
 }
 
 enum PaymentStatus {
@@ -46,6 +58,20 @@ enum DeliveryStatus {
   PENDING
   DELIVERED
   FAILED
+}
+
+enum FulfillmentStatus {
+  PENDING
+  PROCESSING
+  DELIVERED
+  FAILED
+}
+
+enum SupplierRequestStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  CANCELLED
 }
 
 enum TicketStatus {
@@ -201,6 +227,8 @@ model ProductVariant {
   name           String          @db.VarChar(255)
   durationDays   Int?            @map("duration_days")
   sellPrice      Decimal         @map("sell_price") @db.Decimal(18, 2)
+  deliveryMethod DeliveryMethod  @default(ACCOUNT) @map("delivery_method")
+  displayStock   Int             @default(0) @map("display_stock")
   warrantyDays   Int?            @map("warranty_days")
   active         Boolean         @default(true)
   averageRating  Decimal         @default(0) @map("average_rating") @db.Decimal(3, 2)
@@ -210,6 +238,7 @@ model ProductVariant {
   isDeleted      Boolean         @default(false) @map("is_deleted")
   product        Product         @relation(fields: [productId], references: [id])
   inventories    Inventory[]
+  supplierVariants SupplierVariant[]
   orderItems     OrderItem[]
   couponProducts CouponProduct[]
   reviews        Review[]
@@ -217,6 +246,78 @@ model ProductVariant {
   @@index([productId], map: "idx_product_variants_product")
   @@index([active, isDeleted], map: "idx_product_variants_active_deleted")
   @@map("product_variants")
+}
+
+model Supplier {
+  id                 String            @id @default(uuid()) @db.Uuid
+  name               String            @db.VarChar(255)
+  email              String?           @db.VarChar(255)
+  telegram           String?           @db.VarChar(100)
+  zalo               String?           @db.VarChar(50)
+  active             Boolean           @default(true)
+  avgDeliveryMinutes Int?              @map("avg_delivery_minutes")
+  successRate        Decimal?          @map("success_rate") @db.Decimal(5, 2)
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  variants           SupplierVariant[]
+  requests           SupplierRequest[]
+
+  @@index([active], map: "idx_suppliers_active")
+  @@map("suppliers")
+}
+
+model SupplierVariant {
+  id                String         @id @default(uuid()) @db.Uuid
+  supplierId        String         @map("supplier_id") @db.Uuid
+  variantId         String         @map("variant_id") @db.Uuid
+  costPrice         Decimal        @map("cost_price") @db.Decimal(18, 2)
+  availableQuantity Int            @default(0) @map("available_quantity")
+  reservedQuantity  Int            @default(0) @map("reserved_quantity")
+  soldQuantity      Int            @default(0) @map("sold_quantity")
+  active            Boolean        @default(true)
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  supplier          Supplier       @relation(fields: [supplierId], references: [id])
+  variant           ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@unique([supplierId, variantId], map: "uq_supplier_variants_supplier_variant")
+  @@index([variantId], map: "idx_supplier_variants_variant")
+  @@index([active], map: "idx_supplier_variants_active")
+  @@map("supplier_variants")
+}
+
+model SupplierRequest {
+  id          String                @id @default(uuid()) @db.Uuid
+  orderId     String                @map("order_id") @db.Uuid
+  supplierId  String                @map("supplier_id") @db.Uuid
+  status      SupplierRequestStatus @default(PENDING)
+  note        String?
+  requestedAt DateTime              @default(now()) @map("requested_at") @db.Timestamptz(6)
+  fulfilledAt DateTime?             @map("fulfilled_at") @db.Timestamptz(6)
+  createdAt   DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  order       Order                 @relation(fields: [orderId], references: [id])
+  supplier    Supplier              @relation(fields: [supplierId], references: [id])
+  items       SupplierRequestItem[]
+
+  @@index([orderId], map: "idx_supplier_requests_order")
+  @@index([supplierId], map: "idx_supplier_requests_supplier")
+  @@index([status], map: "idx_supplier_requests_status")
+  @@map("supplier_requests")
+}
+
+model SupplierRequestItem {
+  id          String          @id @default(uuid()) @db.Uuid
+  requestId   String          @map("request_id") @db.Uuid
+  orderItemId String          @map("order_item_id") @db.Uuid
+  quantity    Int
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  request     SupplierRequest @relation(fields: [requestId], references: [id])
+  orderItem   OrderItem       @relation(fields: [orderItemId], references: [id])
+
+  @@index([requestId], map: "idx_supplier_request_items_request")
+  @@index([orderItemId], map: "idx_supplier_request_items_order_item")
+  @@map("supplier_request_items")
 }
 
 model Inventory {
@@ -255,7 +356,7 @@ model Order {
   discount      Decimal       @default(0) @db.Decimal(18, 2)
   totalAmount   Decimal       @default(0) @map("total_amount") @db.Decimal(18, 2)
   couponId      String?       @map("coupon_id") @db.Uuid
-  status        OrderStatus   @default(PENDING)
+  status        OrderStatus   @default(PENDING_PAYMENT)
   paymentStatus PaymentStatus @default(PENDING) @map("payment_status")
   createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -267,6 +368,7 @@ model Order {
   tickets       Ticket[]
   couponUsages  CouponUsage[]
   reviews       Review[]
+  supplierRequests SupplierRequest[]
 
   @@index([userId], map: "idx_orders_user")
   @@index([couponId], map: "idx_orders_coupon")
@@ -375,11 +477,41 @@ model OrderItem {
   variant     ProductVariant @relation(fields: [variantId], references: [id])
   inventory   Inventory?     @relation(fields: [inventoryId], references: [id])
   deliveries  Delivery[]
+  fulfillments Fulfillment[]
+  supplierRequestItems SupplierRequestItem[]
 
   @@index([orderId], map: "idx_order_items_order")
   @@index([variantId], map: "idx_order_items_variant")
   @@index([inventoryId], map: "idx_order_items_inventory")
   @@map("order_items")
+}
+
+model Fulfillment {
+  id          String              @id @default(uuid()) @db.Uuid
+  orderItemId String              @map("order_item_id") @db.Uuid
+  status      FulfillmentStatus   @default(PENDING)
+  deliveredAt DateTime?           @map("delivered_at") @db.Timestamptz(6)
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  orderItem   OrderItem           @relation(fields: [orderItemId], references: [id])
+  resources   FulfillmentResource[]
+
+  @@index([orderItemId], map: "idx_fulfillments_order_item")
+  @@index([status], map: "idx_fulfillments_status")
+  @@map("fulfillments")
+}
+
+model FulfillmentResource {
+  id            String         @id @default(uuid()) @db.Uuid
+  fulfillmentId String         @map("fulfillment_id") @db.Uuid
+  type          DeliveryMethod
+  payload       Json
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  fulfillment   Fulfillment    @relation(fields: [fulfillmentId], references: [id])
+
+  @@index([fulfillmentId], map: "idx_fulfillment_resources_fulfillment")
+  @@index([type], map: "idx_fulfillment_resources_type")
+  @@map("fulfillment_resources")
 }
 
 model Payment {

@@ -18,12 +18,24 @@ export enum InventoryStatus {
   LOCKED = 'LOCKED',
 }
 
+export enum DeliveryMethod {
+  ACCOUNT = 'ACCOUNT',
+  EMAIL_INVITE = 'EMAIL_INVITE',
+  LINK_INVITE = 'LINK_INVITE',
+  LICENSE_KEY = 'LICENSE_KEY',
+  API_KEY = 'API_KEY',
+  VOUCHER_CODE = 'VOUCHER_CODE',
+  MANUAL = 'MANUAL',
+}
+
 export enum OrderStatus {
-  PENDING = 'PENDING',
+  PENDING_PAYMENT = 'PENDING_PAYMENT',
   PAID = 'PAID',
+  WAITING_SUPPLIER = 'WAITING_SUPPLIER',
+  FULFILLING = 'FULFILLING',
   DELIVERED = 'DELIVERED',
+  COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
-  REFUNDED = 'REFUNDED',
 }
 
 export enum PaymentStatus {
@@ -37,6 +49,20 @@ export enum DeliveryStatus {
   PENDING = 'PENDING',
   DELIVERED = 'DELIVERED',
   FAILED = 'FAILED',
+}
+
+export enum FulfillmentStatus {
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  DELIVERED = 'DELIVERED',
+  FAILED = 'FAILED',
+}
+
+export enum SupplierRequestStatus {
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
 }
 
 export enum TicketStatus {

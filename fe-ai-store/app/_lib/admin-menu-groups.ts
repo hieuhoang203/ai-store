@@ -34,9 +34,18 @@ const GROUPS: Array<{
   },
   {
     key: "inventory",
-    label: "Inventory",
+    label: "Fulfillment",
     icon: Boxes,
-    entityKeys: ["inventories", "deliveries"],
+    entityKeys: [
+      "suppliers",
+      "supplier-variants",
+      "supplier-requests",
+      "supplier-request-items",
+      "fulfillments",
+      "fulfillment-resources",
+      "inventories",
+      "deliveries",
+    ],
   },
   {
     key: "sales",

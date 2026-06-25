@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { InventoryStatus } from '../../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service';
 
 @Injectable()
@@ -14,9 +13,9 @@ export class ProductsRepository {
         variants: {
           where: { isDeleted: false, active: true },
           include: {
-            inventories: {
-              where: { status: InventoryStatus.AVAILABLE, isDeleted: false },
-              select: { id: true, metadata: true },
+            supplierVariants: {
+              where: { active: true, supplier: { active: true } },
+              select: { availableQuantity: true, reservedQuantity: true },
             },
           },
         },
@@ -52,9 +51,9 @@ export class ProductsRepository {
         variants: {
           where: { isDeleted: false, active: true },
           include: {
-            inventories: {
-              where: { status: InventoryStatus.AVAILABLE, isDeleted: false },
-              select: { id: true, metadata: true },
+            supplierVariants: {
+              where: { active: true, supplier: { active: true } },
+              select: { availableQuantity: true, reservedQuantity: true },
             },
           },
         },
@@ -71,9 +70,9 @@ export class ProductsRepository {
         variants: {
           where: { isDeleted: false, active: true },
           include: {
-            inventories: {
-              where: { status: InventoryStatus.AVAILABLE, isDeleted: false },
-              select: { id: true, metadata: true },
+            supplierVariants: {
+              where: { active: true, supplier: { active: true } },
+              select: { availableQuantity: true, reservedQuantity: true },
             },
           },
         },

@@ -1,7 +1,13 @@
 export type DeliveryAccount = {
   email?: string | null;
+  username?: string | null;
   password?: string | null;
   gatewayUrl?: string | null;
+  licenseKey?: string | null;
+  apiKey?: string | null;
+  voucherCode?: string | null;
+  workspace?: string | null;
+  type?: string | null;
 };
 
 export type DeliveryProduct = {
@@ -25,39 +31,39 @@ export type DeliveryMessagePayload = {
 
 export function renderDeliveryMessage(payload: DeliveryMessagePayload) {
   return [
-    '🎉 ĐẶT HÀNG THÀNH CÔNG',
+    'DAT HANG THANH CONG',
     '',
-    `🧾 Mã đơn: ${renderValue(payload.orderCode)}`,
+    `Ma don: ${renderValue(payload.orderCode)}`,
     '',
-    '━━━━━━━━━━━━━━',
+    '------------------------------',
     '',
     ...payload.products.flatMap(renderProduct),
-    '━━━━━━━━━━━━━━',
+    '------------------------------',
     '',
-    '🛠️ Hỗ trợ:',
-    `💬 Telegram: ${renderValue(payload.support.telegram)}`,
-    `📱 Zalo: ${renderValue(payload.support.zalo)}`,
+    'Ho tro:',
+    `Telegram: ${renderValue(payload.support.telegram)}`,
+    `Zalo: ${renderValue(payload.support.zalo)}`,
     '',
-    '❤️ AI Store cảm ơn bạn đã tin tưởng sử dụng dịch vụ.',
+    'AI Store cam on ban da tin tuong su dung dich vu.',
   ].join('\n');
 }
 
 export function renderDeliveryTelegramMessage(payload: DeliveryMessagePayload) {
   return [
-    '🎉 ĐẶT HÀNG THÀNH CÔNG',
+    'DAT HANG THANH CONG',
     '',
-    `🧾 Mã đơn: <code>${escapeHtml(renderValue(payload.orderCode))}</code>`,
+    `Ma don: <code>${escapeHtml(renderValue(payload.orderCode))}</code>`,
     '',
-    '━━━━━━━━━━━━━━',
+    '------------------------------',
     '',
     ...payload.products.flatMap(renderTelegramProduct),
-    '━━━━━━━━━━━━━━',
+    '------------------------------',
     '',
-    '🛠️ Hỗ trợ:',
-    `💬 Telegram: ${escapeHtml(renderValue(payload.support.telegram))}`,
-    `📱 Zalo: ${escapeHtml(renderValue(payload.support.zalo))}`,
+    'Ho tro:',
+    `Telegram: ${escapeHtml(renderValue(payload.support.telegram))}`,
+    `Zalo: ${escapeHtml(renderValue(payload.support.zalo))}`,
     '',
-    '❤️ AI Store cảm ơn bạn đã tin tưởng sử dụng dịch vụ.',
+    'AI Store cam on ban da tin tuong su dung dich vu.',
   ].join('\n');
 }
 
@@ -67,18 +73,27 @@ function renderProduct(product: DeliveryProduct) {
   return accounts.flatMap((account) => {
     if (account.gatewayUrl) {
       return [
-        `🤖 ${renderProductName(product)}`,
-        `🔗 Link nhận dịch vụ: ${renderValue(account.gatewayUrl)}`,
+        renderProductName(product),
+        `Link nhan dich vu: ${renderValue(account.gatewayUrl)}`,
+        '',
+      ];
+    }
+
+    if (account.licenseKey || account.apiKey || account.voucherCode) {
+      return [
+        renderProductName(product),
+        `Ma: ${renderValue(account.licenseKey || account.apiKey || account.voucherCode)}`,
         '',
       ];
     }
 
     return [
-      `🤖 ${renderProductName(product)}`,
-      `📧 ${renderValue(account.email)}`,
-      `🔑 ${renderValue(account.password)}`,
+      renderProductName(product),
+      `Email/User: ${renderValue(account.email || account.username)}`,
+      `Password: ${renderValue(account.password)}`,
+      account.workspace ? `Workspace: ${renderValue(account.workspace)}` : '',
       '',
-    ];
+    ].filter(Boolean);
   });
 }
 
@@ -88,18 +103,27 @@ function renderTelegramProduct(product: DeliveryProduct) {
   return accounts.flatMap((account) => {
     if (account.gatewayUrl) {
       return [
-        `🤖 ${escapeHtml(renderProductName(product))}`,
-        `🔗 Link nhận dịch vụ: ${escapeHtml(renderValue(account.gatewayUrl))}`,
+        escapeHtml(renderProductName(product)),
+        `Link nhan dich vu: ${escapeHtml(renderValue(account.gatewayUrl))}`,
+        '',
+      ];
+    }
+
+    if (account.licenseKey || account.apiKey || account.voucherCode) {
+      return [
+        escapeHtml(renderProductName(product)),
+        `Ma: <code>${escapeHtml(renderValue(account.licenseKey || account.apiKey || account.voucherCode))}</code>`,
         '',
       ];
     }
 
     return [
-      `🤖 ${escapeHtml(renderProductName(product))}`,
-      `📧 <code>${escapeHtml(renderValue(account.email))}</code>`,
-      `🔑 <code>${escapeHtml(renderValue(account.password))}</code>`,
+      escapeHtml(renderProductName(product)),
+      `Email/User: <code>${escapeHtml(renderValue(account.email || account.username))}</code>`,
+      `Password: <code>${escapeHtml(renderValue(account.password))}</code>`,
+      account.workspace ? `Workspace: ${escapeHtml(renderValue(account.workspace))}` : '',
       '',
-    ];
+    ].filter(Boolean);
   });
 }
 

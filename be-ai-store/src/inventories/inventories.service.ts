@@ -235,6 +235,15 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
         });
         if (existingRequestCount) continue;
 
+        const supplierCount = await tx.supplierVariant.count({
+          where: {
+            variantId: item.variantId,
+            active: true,
+            supplier: { active: true },
+          },
+        });
+        if (supplierCount === 0) continue;
+
         let remaining = item.quantity;
         const supplierVariants = await tx.$queryRaw<Array<{
           id: string;
@@ -312,10 +321,12 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
         });
       }
 
-      await tx.order.update({
-        where: { id: order.id },
-        data: { status: OrderStatus.WAITING_SUPPLIER },
-      });
+      if (requestItemsBySupplier.size > 0) {
+        await tx.order.update({
+          where: { id: order.id },
+          data: { status: OrderStatus.WAITING_SUPPLIER },
+        });
+      }
     });
   }
 

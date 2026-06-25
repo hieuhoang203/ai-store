@@ -275,7 +275,12 @@ export class DeliveriesService {
         user: true,
         items: {
           where: { isDeleted: false },
-          include: { fulfillments: true },
+          include: {
+            fulfillments: true,
+            deliveries: {
+              where: { isDeleted: false },
+            },
+          },
         },
       },
     });
@@ -283,7 +288,9 @@ export class DeliveriesService {
     const expectedQuantity = order.items.reduce((sum, item) => sum + item.quantity, 0);
     const deliveredQuantity = order.items.reduce(
       (sum, item) =>
-        sum + item.fulfillments.filter((fulfillment) => fulfillment.status === FulfillmentStatus.DELIVERED).length,
+        sum +
+        item.fulfillments.filter((fulfillment) => fulfillment.status === FulfillmentStatus.DELIVERED).length +
+        item.deliveries.filter((delivery) => delivery.status === DeliveryStatus.DELIVERED).length,
       0,
     );
 

@@ -138,8 +138,34 @@ export class OrdersService {
         });
       }
 
+      const orderItemMap = new Map(createdOrder.items.map((item) => [item.variantId, item]));
       for (const item of items) {
-        await this.inventoriesService.assertSupplierAvailability(tx, item.variantId, item.quantity);
+        const supplierCount = await tx.supplierVariant.count({
+          where: {
+            variantId: item.variantId,
+            active: true,
+            supplier: { active: true },
+          },
+        });
+
+        if (supplierCount > 0) {
+          await this.inventoriesService.assertSupplierAvailability(tx, item.variantId, item.quantity);
+        } else {
+          const reservedInventoryIds = await this.inventoriesService.reserveAvailableInventories(tx, {
+            variantId: item.variantId,
+            quantity: item.quantity,
+            userId: user.id,
+            orderId: createdOrder.id,
+            reservedUntil: expiresAt,
+          });
+          const orderItem = orderItemMap.get(item.variantId);
+          if (orderItem) {
+            await tx.orderItem.update({
+              where: { id: orderItem.id },
+              data: { inventoryId: reservedInventoryIds[0] },
+            });
+          }
+        }
       }
 
       return { status: 'created' as const, order: createdOrder };

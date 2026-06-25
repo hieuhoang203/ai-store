@@ -31,67 +31,68 @@ export type DeliveryMessagePayload = {
 
 export function renderDeliveryMessage(payload: DeliveryMessagePayload) {
   return [
-    'DAT HANG THANH CONG',
+    '🎉 ĐẶT HÀNG THÀNH CÔNG 🎉',
     '',
-    `Ma don: ${renderValue(payload.orderCode)}`,
+    `💳 Mã đơn hàng: ${renderValue(payload.orderCode)}`,
     '',
-    '------------------------------',
+    '▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬',
     '',
     ...payload.products.flatMap(renderProduct),
-    '------------------------------',
+    '▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬',
     '',
-    'Ho tro:',
-    `Telegram: ${renderValue(payload.support.telegram)}`,
-    `Zalo: ${renderValue(payload.support.zalo)}`,
+    '☎️ Kênh hỗ trợ:',
+    `✈️ Telegram: ${renderValue(payload.support.telegram)}`,
+    `💬 Zalo: ${renderValue(payload.support.zalo)}`,
     '',
-    'AI Store cam on ban da tin tuong su dung dich vu.',
+    '❤️ AI Store chân thành cảm ơn bạn đã tin tưởng sử dụng dịch vụ!',
   ].join('\n');
 }
 
 export function renderDeliveryTelegramMessage(payload: DeliveryMessagePayload) {
   return [
-    'DAT HANG THANH CONG',
+    '🎉 <b>ĐẶT HÀNG THÀNH CÔNG</b> 🎉',
     '',
-    `Ma don: <code>${escapeHtml(renderValue(payload.orderCode))}</code>`,
+    `💳 Mã đơn hàng: <code>${escapeHtml(renderValue(payload.orderCode))}</code>`,
     '',
-    '------------------------------',
+    '▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬',
     '',
     ...payload.products.flatMap(renderTelegramProduct),
-    '------------------------------',
+    '▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬',
     '',
-    'Ho tro:',
-    `Telegram: ${escapeHtml(renderValue(payload.support.telegram))}`,
-    `Zalo: ${escapeHtml(renderValue(payload.support.zalo))}`,
+    '☎️ <b>Kênh hỗ trợ:</b>',
+    `✈️ Telegram: ${escapeHtml(renderValue(payload.support.telegram))}`,
+    `💬 Zalo: ${escapeHtml(renderValue(payload.support.zalo))}`,
     '',
-    'AI Store cam on ban da tin tuong su dung dich vu.',
+    '❤️ <i>AI Store chân thành cảm ơn bạn đã tin tưởng sử dụng dịch vụ!</i>',
   ].join('\n');
 }
 
 function renderProduct(product: DeliveryProduct) {
   const accounts = product.accounts.length ? product.accounts : [{}];
 
-  return accounts.flatMap((account) => {
+  return accounts.flatMap((account, index) => {
+    const header = `📦 ${renderProductName(product)}${accounts.length > 1 ? ` (Phần ${index + 1})` : ''}`;
     if (account.gatewayUrl) {
       return [
-        renderProductName(product),
-        `Link nhan dich vu: ${renderValue(account.gatewayUrl)}`,
+        header,
+        `🔗 Link nhận dịch vụ: ${renderValue(account.gatewayUrl)}`,
         '',
       ];
     }
 
     if (account.licenseKey || account.apiKey || account.voucherCode) {
       return [
-        renderProductName(product),
-        `Ma: ${renderValue(account.licenseKey || account.apiKey || account.voucherCode)}`,
+        header,
+        `🔑 Mã kích hoạt: ${renderValue(account.licenseKey || account.apiKey || account.voucherCode)}`,
         '',
       ];
     }
 
     return [
-      renderProductName(product),
-      `Email/User: ${renderValue(account.email || account.username)}`,
-      `Password: ${renderValue(account.password)}`,
-      account.workspace ? `Workspace: ${renderValue(account.workspace)}` : '',
+      header,
+      `👤 Tài khoản: ${renderValue(account.email || account.username)}`,
+      `🔒 Mật khẩu: ${renderValue(account.password)}`,
+      account.workspace ? `💼 Workspace: ${renderValue(account.workspace)}` : '',
       '',
     ].filter(Boolean);
   });
@@ -100,28 +101,29 @@ function renderProduct(product: DeliveryProduct) {
 function renderTelegramProduct(product: DeliveryProduct) {
   const accounts = product.accounts.length ? product.accounts : [{}];
 
-  return accounts.flatMap((account) => {
+  return accounts.flatMap((account, index) => {
+    const header = `📦 <b>${escapeHtml(renderProductName(product))}</b>${accounts.length > 1 ? ` (Phần ${index + 1})` : ''}`;
     if (account.gatewayUrl) {
       return [
-        escapeHtml(renderProductName(product)),
-        `Link nhan dich vu: ${escapeHtml(renderValue(account.gatewayUrl))}`,
+        header,
+        `🔗 Link nhận dịch vụ: <a href="${escapeHtml(renderValue(account.gatewayUrl))}">Tham gia ngay</a>`,
         '',
       ];
     }
 
     if (account.licenseKey || account.apiKey || account.voucherCode) {
       return [
-        escapeHtml(renderProductName(product)),
-        `Ma: <code>${escapeHtml(renderValue(account.licenseKey || account.apiKey || account.voucherCode))}</code>`,
+        header,
+        `🔑 Mã kích hoạt: <code>${escapeHtml(renderValue(account.licenseKey || account.apiKey || account.voucherCode))}</code>`,
         '',
       ];
     }
 
     return [
-      escapeHtml(renderProductName(product)),
-      `Email/User: <code>${escapeHtml(renderValue(account.email || account.username))}</code>`,
-      `Password: <code>${escapeHtml(renderValue(account.password))}</code>`,
-      account.workspace ? `Workspace: ${escapeHtml(renderValue(account.workspace))}` : '',
+      header,
+      `👤 Tài khoản: <code>${escapeHtml(renderValue(account.email || account.username))}</code>`,
+      `🔒 Mật khẩu: <code>${escapeHtml(renderValue(account.password))}</code>`,
+      account.workspace ? `💼 Workspace: <code>${escapeHtml(renderValue(account.workspace))}</code>` : '',
       '',
     ].filter(Boolean);
   });

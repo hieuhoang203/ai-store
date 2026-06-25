@@ -99,7 +99,15 @@ export class DeliveriesService {
     });
 
     if (order.user.telegramId) {
-      await this.telegramService.sendHtmlMessage(order.user.telegramId, telegramContent);
+      const inviteLinks = payload.products.flatMap((p) =>
+        p.accounts.map((a) => a.gatewayUrl).filter((url): url is string => Boolean(url)),
+      );
+      const inlineKeyboard = inviteLinks.map((link, idx) => [
+        { text: inviteLinks.length > 1 ? `👉 Tham gia #${idx + 1}` : '👉 Tham gia', url: link },
+      ]);
+      const replyMarkup = inlineKeyboard.length > 0 ? { inline_keyboard: inlineKeyboard } : undefined;
+
+      await this.telegramService.sendHtmlMessage(order.user.telegramId, telegramContent, replyMarkup);
     }
 
     return content;

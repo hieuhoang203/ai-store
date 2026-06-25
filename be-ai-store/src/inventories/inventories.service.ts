@@ -650,12 +650,26 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
 
       const quantity = matchingSlots.reduce((sum, slot) => sum + slot.quantity, 0);
       const usedSlots = this.toSafeInteger(metadata.usedSlots) + quantity;
+
+      let capacity: any = metadata.capacity;
+      if (capacity && typeof capacity === 'object' && !Array.isArray(capacity)) {
+        const cap = capacity as Record<string, unknown>;
+        const total = Number(cap.total || 0);
+        const nextUsed = Number(cap.used || 0) + quantity;
+        capacity = {
+          ...cap,
+          used: nextUsed,
+          remaining: Math.max(total - nextUsed, 0),
+        };
+      }
+
       await tx.inventory.update({
         where: { id: inventory.id },
         data: {
           metadata: {
             ...metadata,
             usedSlots,
+            capacity,
             reservedSlots: reservedSlots.filter((slot) => slot.orderId !== orderId),
             lastSoldAt: new Date().toISOString(),
           },

@@ -84,10 +84,17 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async sendHtmlMessage(telegramId: bigint | number | string, message: string) {
+  async sendHtmlMessage(
+    telegramId: bigint | number | string,
+    message: string,
+    replyMarkup?: any,
+  ) {
     if (!this.bot) return;
     for (const chunk of this.chunkMessage(message)) {
-      await this.bot.telegram.sendMessage(String(telegramId), chunk, { parse_mode: 'HTML' });
+      await this.bot.telegram.sendMessage(String(telegramId), chunk, {
+        parse_mode: 'HTML',
+        reply_markup: replyMarkup,
+      });
     }
   }
 

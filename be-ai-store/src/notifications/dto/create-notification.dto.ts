@@ -1,12 +1,12 @@
 import { IsEnum, IsString, IsUUID } from 'class-validator';
-import { NotificationType } from '../../../generated/prisma/client.js';
+import { LoaiThongBao } from '../../../generated/prisma/client.js';
 
 export class CreateNotificationDto {
   @IsUUID()
   userId!: string;
 
-  @IsEnum(NotificationType)
-  type!: NotificationType;
+  @IsEnum(LoaiThongBao)
+  type!: LoaiThongBao;
 
   @IsString()
   title!: string;

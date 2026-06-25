@@ -4,11 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { parse, validate } from '@telegram-apps/init-data-node';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
-import {
-  AdminLoginTokenStatus,
-  RoleName,
-  UserStatus,
-} from '../../generated/prisma/client.js';
+import { TrangThaiNguoiDung, VaiTroHeThong } from '../../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service';
 
 export type TelegramProfileInput = {
@@ -28,23 +24,17 @@ export class AuthService {
 
   async loginWithTelegramInitData(initData: string) {
     const user = await this.getOrCreateTelegramUser(initData);
-    // Mini App dùng token ngắn hạn 15 phút
-    return this.issueTokens(user.id, [RoleName.CUSTOMER], '15m');
+    return this.issueTokens(user.id, [VaiTroHeThong.KHACH_HANG], '15m');
   }
 
   async getOrCreateTelegramUser(initData: string) {
     const botToken = this.configService.get<string>('TELEGRAM_BOT_TOKEN');
-    if (!botToken) {
-      throw new BadRequestException('TELEGRAM_BOT_TOKEN is not configured');
-    }
+    if (!botToken) throw new BadRequestException('TELEGRAM_BOT_TOKEN is not configured');
 
     validate(initData, botToken);
     const parsed = parse(initData);
     const telegramUser = parsed.user;
-
-    if (!telegramUser) {
-      throw new UnauthorizedException('Telegram user payload is missing');
-    }
+    if (!telegramUser) throw new UnauthorizedException('Telegram user payload is missing');
 
     return this.upsertTelegramUserProfile({
       id: telegramUser.id,
@@ -57,20 +47,20 @@ export class AuthService {
   async upsertTelegramUserProfile(profile: TelegramProfileInput) {
     const telegramId = BigInt(profile.id);
     const username = this.normalizeProfileValue(profile.username);
-    const fullName = this.buildFullName(profile.firstName, profile.lastName);
+    const hoTen = this.buildFullName(profile.firstName, profile.lastName);
 
-    return this.prisma.user.upsert({
+    return this.prisma.nguoiDung.upsert({
       where: { telegramId },
       create: {
         telegramId,
         username,
-        fullName,
-        status: UserStatus.ACTIVE,
+        hoTen,
+        trangThai: TrangThaiNguoiDung.DANG_HOAT_DONG,
       },
       update: {
         ...(username ? { username } : {}),
-        ...(fullName ? { fullName } : {}),
-        status: UserStatus.ACTIVE,
+        ...(hoTen ? { hoTen } : {}),
+        trangThai: TrangThaiNguoiDung.DANG_HOAT_DONG,
       },
     });
   }
@@ -78,13 +68,13 @@ export class AuthService {
   async createAdminLoginToken(userId: string) {
     const token = randomBytes(32).toString('hex');
     const tokenHash = await bcrypt.hash(token, 10);
-    const expiredAt = new Date(Date.now() + 5 * 60 * 1000);
+    const hetHanLuc = new Date(Date.now() + 5 * 60 * 1000);
 
-    await this.prisma.adminLoginToken.create({
+    await this.prisma.tokenDangNhapAdmin.create({
       data: {
-        userId,
+        nguoiDungId: userId,
         tokenHash,
-        expiredAt,
+        hetHanLuc,
       },
     });
 
@@ -92,58 +82,49 @@ export class AuthService {
   }
 
   async loginAdminWithToken(token: string) {
-    const candidates = await this.prisma.adminLoginToken.findMany({
+    const candidates = await this.prisma.tokenDangNhapAdmin.findMany({
       where: {
-        status: AdminLoginTokenStatus.PENDING,
-        expiredAt: { gt: new Date() },
-        isDeleted: false,
+        daDung: false,
+        hetHanLuc: { gt: new Date() },
+        daXoa: false,
       },
       include: {
-        user: {
+        nguoiDung: {
           include: {
-            roles: {
-              include: { role: true },
-              where: { isDeleted: false },
+            vaiTro: {
+              include: { vaiTro: true },
+              where: { daXoa: false },
             },
           },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { taoLuc: 'desc' },
       take: 20,
     });
 
     for (const candidate of candidates) {
-      if (await bcrypt.compare(token, candidate.tokenHash)) {
-        await this.prisma.adminLoginToken.update({
-          where: { id: candidate.id },
-          data: {
-            status: AdminLoginTokenStatus.USED,
-            usedAt: new Date(),
-          },
-        });
+      if (!(await bcrypt.compare(token, candidate.tokenHash))) continue;
 
-        const roles = candidate.user.roles.map((role) => role.role.name);
-        if (!roles.includes(RoleName.ADMIN) && !roles.includes(RoleName.SUPER_ADMIN)) {
-          throw new UnauthorizedException('Admin role is required');
-        }
+      await this.prisma.tokenDangNhapAdmin.update({
+        where: { id: candidate.id },
+        data: { daDung: true, dungLuc: new Date() },
+      });
 
-        // Admin session kéo dài 8 giờ để không bị out giữa chừng
-        return this.issueTokens(candidate.userId, roles, '8h');
+      const roles = candidate.nguoiDung.vaiTro.map((item) => item.vaiTro.ten);
+      if (!roles.includes(VaiTroHeThong.ADMIN) && !roles.includes(VaiTroHeThong.SUPER_ADMIN)) {
+        throw new UnauthorizedException('Admin role is required');
       }
+
+      return this.issueTokens(candidate.nguoiDungId, roles, '8h');
     }
 
     throw new UnauthorizedException('Invalid or expired admin login token');
   }
 
-  private issueTokens(userId: string, roles: RoleName[], expiresIn: string = '15m') {
+  private issueTokens(userId: string, roles: VaiTroHeThong[], expiresIn: string = '15m') {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const accessToken = this.jwtService.sign({ sub: userId, roles }, { expiresIn } as any);
-
-    return {
-      accessToken,
-      tokenType: 'Bearer',
-      expiresIn,
-    };
+    return { accessToken, tokenType: 'Bearer', expiresIn };
   }
 
   private normalizeProfileValue(value?: string | null) {
@@ -160,7 +141,6 @@ export class AuthService {
       .map((value) => this.normalizeProfileValue(value))
       .filter(Boolean)
       .join(' ');
-
     return fullName || undefined;
   }
 }

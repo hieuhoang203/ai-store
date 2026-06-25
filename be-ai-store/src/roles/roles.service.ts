@@ -1,15 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { RoleName } from '../../generated/prisma/client.js';
+import { VaiTroHeThong } from '../../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service';
 
 @Injectable()
 export class RolesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  ensureRole(name: RoleName) {
-    return this.prisma.role.upsert({
-      where: { name },
-      create: { name },
+  ensureRole(ten: VaiTroHeThong) {
+    return this.prisma.vaiTro.upsert({
+      where: { ten },
+      create: { ten },
       update: {},
     });
   }

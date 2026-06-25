@@ -15,19 +15,16 @@ export class ProductsService {
   }
 
   async listActiveCategories() {
-    const CACHE_KEY = 'ai-store:active-categories';
-
+    const CACHE_KEY = 'ai-store:active-categories:v2';
     const cached = await this.redisService.client.get(CACHE_KEY);
-    if (cached) {
-      return JSON.parse(cached);
-    }
+    if (cached) return JSON.parse(cached);
 
     const categories = await this.productsRepository.findActiveCategories();
     const result = categories.map((category) => ({
       id: category.id,
-      name: category.name,
+      name: category.tenLoai,
       icon: category.icon,
-      productCount: category._count.products,
+      productCount: category._count.sanPham,
     }));
 
     await this.redisService.client.set(CACHE_KEY, JSON.stringify(result), 'EX', 3600);
@@ -46,28 +43,25 @@ export class ProductsService {
   }
 
   private presentProduct(product: Awaited<ReturnType<ProductsRepository['findActiveProducts']>>[number]) {
-    const { categoryRef, ...rest } = product;
-
     return {
-      ...rest,
-      variants: product.variants.map(({ supplierVariants, ...variant }) => ({
-        ...variant,
-        availableStock: this.getVariantAvailableStock(variant.displayStock, supplierVariants),
+      id: product.id,
+      code: product.maSanPham,
+      name: product.tenSanPham,
+      description: product.moTa,
+      categoryId: product.loaiId,
+      category: product.loai?.tenLoai || null,
+      categoryIcon: product.loai?.icon || null,
+      imageUrl: product.anhDaiDien,
+      variants: product.goiDichVu.map((goi) => ({
+        id: goi.id,
+        name: goi.tenGoi,
+        sellPrice: goi.giaBan.toString(),
+        durationDays: goi.thoiHanNgay,
+        warrantyDays: goi.baoHanhNgay,
+        availableStock: goi.tonHienThi,
+        averageRating: '0',
+        reviewCount: 0,
       })),
-      category: categoryRef?.name || null,
-      categoryIcon: categoryRef?.icon || null,
     };
-  }
-
-  private getVariantAvailableStock(
-    displayStock: number,
-    supplierVariants: Array<{ availableQuantity: number; reservedQuantity: number }>,
-  ) {
-    const supplierStock = supplierVariants.reduce(
-      (sum, item) => sum + Math.max(item.availableQuantity - item.reservedQuantity, 0),
-      0,
-    );
-
-    return Math.max(displayStock, supplierStock);
   }
 }

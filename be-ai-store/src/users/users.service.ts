@@ -6,16 +6,16 @@ export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
   findById(id: string) {
-    return this.prisma.user.findFirst({
-      where: { id, isDeleted: false },
-      include: { roles: { include: { role: true } } },
+    return this.prisma.nguoiDung.findFirst({
+      where: { id, daXoa: false },
+      include: { vaiTro: { include: { vaiTro: true } } },
     });
   }
 
   findByTelegramId(telegramId: bigint) {
-    return this.prisma.user.findUnique({
+    return this.prisma.nguoiDung.findUnique({
       where: { telegramId },
-      include: { roles: { include: { role: true } } },
+      include: { vaiTro: { include: { vaiTro: true } } },
     });
   }
 }

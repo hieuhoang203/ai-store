@@ -1,30 +1,18 @@
 import { BadRequestException, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
-  Order,
-  OrderStatus,
-  PaymentProvider,
-  PaymentStatus,
+  KieuPhuongThucGiaoHang,
+  LoaiNguonGiaoHang,
   Prisma,
-  Product,
-  ProductVariant,
+  TrangThaiDonHang,
+  TrangThaiGiaoHang,
+  TrangThaiTaiNguyen,
+  TrangThaiThanhToan,
+  TrangThaiYeuCauNhaCungCap,
 } from '../../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service';
-import { DeliveriesService } from '../deliveries/deliveries.service';
-import { InventoriesService } from '../inventories/inventories.service';
 import { PayosService } from './payos/payos.service';
 import { PayosWebhookBody } from './payos/payos.types';
-
-type OrderForPayment = Order & {
-  items: Array<{
-    id: string;
-    variantId: string;
-    quantity: number;
-    unitPrice: Prisma.Decimal;
-    totalPrice: Prisma.Decimal;
-    variant: ProductVariant & { product: Product };
-  }>;
-};
 
 export const PAYMENT_QR_TTL_MS = 3 * 60 * 1000;
 
@@ -36,8 +24,6 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly payosService: PayosService,
-    private readonly inventoriesService: InventoriesService,
-    private readonly deliveriesService: DeliveriesService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -50,55 +36,51 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy() {
-    if (this.expiredPaymentTimer) {
-      clearInterval(this.expiredPaymentTimer);
-    }
+    if (this.expiredPaymentTimer) clearInterval(this.expiredPaymentTimer);
   }
 
   async createPayosPayment(orderId: string, expiresAt: Date) {
-    const order = await this.prisma.order.findUniqueOrThrow({
+    const order = await this.prisma.donHang.findUniqueOrThrow({
       where: { id: orderId },
       include: {
-        items: {
-          include: {
-            variant: { include: { product: true } },
-          },
+        chiTiet: {
+          include: { goiDichVu: { include: { sanPham: true } } },
         },
       },
     });
 
-    const amount = this.toVndInteger(order.totalAmount);
-    const payment = await this.prisma.payment.create({
+    const amount = this.toVndInteger(order.tongTien);
+    const paymentContent = this.createPaymentContent(order.maDonHang);
+    const payment = await this.prisma.thanhToan.create({
       data: {
-        orderId: order.id,
-        provider: PaymentProvider.BANKING_QR,
-        amount: order.totalAmount,
-        status: PaymentStatus.PENDING,
+        donHangId: order.id,
+        nhaCungCapThanhToan: 'PAYOS',
+        soTien: order.tongTien,
+        noiDungThanhToan: paymentContent,
+        trangThai: TrangThaiThanhToan.CHO_THANH_TOAN,
       },
-    });
-    const paymentContent = this.createPaymentContent(order.orderNo);
-
-    await this.prisma.payment.update({
-      where: { id: payment.id },
-      data: { paymentContent },
     });
 
     try {
       const paymentLink = await this.payosService.createPaymentLink({
-        orderCode: this.getPayosOrderCode(order.orderNo),
+        orderCode: this.getPayosOrderCode(order.maDonHang),
         amount,
         description: paymentContent,
-        items: this.toPayosItems(order),
+        items: order.chiTiet.map((item) => ({
+          name: `${item.goiDichVu.sanPham.tenSanPham} - ${item.goiDichVu.tenGoi}`.slice(0, 255),
+          quantity: item.soLuong,
+          price: this.toVndInteger(item.donGia),
+        })),
         returnUrl: this.getMiniAppUrl('payment=success'),
         cancelUrl: this.getMiniAppUrl('payment=cancelled'),
         expiredAt: Math.floor(expiresAt.getTime() / 1000),
       });
 
-      return this.prisma.payment.update({
+      return this.prisma.thanhToan.update({
         where: { id: payment.id },
         data: {
-          transactionNo: paymentLink.paymentLinkId,
-          qrContent: JSON.stringify({
+          maGiaoDich: paymentLink.paymentLinkId,
+          duLieuQr: {
             provider: 'PAYOS',
             amount: paymentLink.amount,
             currency: paymentLink.currency,
@@ -111,13 +93,17 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
             accountName: paymentLink.accountName,
             bin: paymentLink.bin,
             expiresAt: expiresAt.toISOString(),
-          }),
+          },
         },
       });
     } catch (error) {
-      await this.prisma.payment.update({
+      await this.prisma.thanhToan.update({
         where: { id: payment.id },
-        data: { status: PaymentStatus.FAILED },
+        data: { trangThai: TrangThaiThanhToan.THAT_BAI },
+      });
+      await this.prisma.donHang.update({
+        where: { id: order.id },
+        data: { trangThai: TrangThaiDonHang.DA_HUY, trangThaiThanhToan: TrangThaiThanhToan.THAT_BAI },
       });
       throw error;
     }
@@ -125,7 +111,6 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
 
   async handlePayosWebhook(body: PayosWebhookBody) {
     const data = this.payosService.verifyWebhook(body);
-
     if (!body.success || body.code !== '00' || data.code !== '00') {
       await this.expirePaymentByOrderCode(Number(data.orderCode));
       return { ok: true };
@@ -140,56 +125,30 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Invalid payOS webhook data');
     }
 
-    const order = await this.prisma.order.findUnique({
-      where: { orderNo: `AI${orderCode}` },
-      include: { payments: true },
+    const order = await this.prisma.donHang.findUnique({
+      where: { maDonHang: `AI${orderCode}` },
+      include: { thanhToan: true },
     });
+    if (!order) return { ok: true, ignored: 'ORDER_NOT_FOUND' };
 
-    if (!order) {
-      return { ok: true, ignored: 'ORDER_NOT_FOUND' };
-    }
-
-    const payment = order.payments.find((record) => record.transactionNo === paymentLinkId);
-
-    if (!payment) {
-      throw new BadRequestException('Payment link does not match order');
-    }
-
-    if (this.toVndInteger(payment.amount) !== amount) {
-      throw new BadRequestException('Payment amount does not match order amount');
-    }
-
-    if (payment.paymentContent !== description) {
-      throw new BadRequestException('Payment description does not match');
-    }
+    const payment = order.thanhToan.find((record) => record.maGiaoDich === paymentLinkId);
+    if (!payment) throw new BadRequestException('Payment link does not match order');
+    if (this.toVndInteger(payment.soTien) !== amount) throw new BadRequestException('Payment amount does not match');
+    if (payment.noiDungThanhToan !== description) throw new BadRequestException('Payment description does not match');
 
     await this.confirmPayment(payment.id);
     return { ok: true };
   }
 
   async confirmPayment(paymentId: string) {
-    const updated = await this.prisma.payment.updateMany({
-      where: {
-        id: paymentId,
-        status: PaymentStatus.PENDING,
-      },
-      data: {
-        status: PaymentStatus.PAID,
-        paidAt: new Date(),
-      },
-    });
-
-    const payment = await this.prisma.payment.findUniqueOrThrow({
+    const payment = await this.prisma.thanhToan.findUniqueOrThrow({
       where: { id: paymentId },
       include: {
-        order: {
+        donHang: {
           include: {
-            items: {
+            chiTiet: {
               include: {
-                deliveries: {
-                  where: { isDeleted: false },
-                  orderBy: { createdAt: 'asc' },
-                },
+                goiPhuongThuc: { include: { phuongThuc: true } },
               },
             },
           },
@@ -197,119 +156,36 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    if (!updated.count && payment.order.status === OrderStatus.DELIVERED) {
-      return payment;
-    }
-
-    if (!updated.count && payment.status !== PaymentStatus.PAID) {
-      return payment;
-    }
-
-    if (updated.count || payment.order.status !== OrderStatus.PAID) {
-      await this.prisma.order.update({
-        where: { id: payment.orderId },
-        data: {
-          paymentStatus: PaymentStatus.PAID,
-          status: OrderStatus.PAID,
-        },
+    if (payment.trangThai !== TrangThaiThanhToan.DA_THANH_TOAN) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.thanhToan.update({
+          where: { id: paymentId },
+          data: { trangThai: TrangThaiThanhToan.DA_THANH_TOAN, thanhToanLuc: new Date() },
+        });
+        await tx.donHang.update({
+          where: { id: payment.donHangId },
+          data: { trangThai: TrangThaiDonHang.DA_THANH_TOAN, trangThaiThanhToan: TrangThaiThanhToan.DA_THANH_TOAN },
+        });
       });
     }
 
-    const soldInventories = await this.inventoriesService.markReservedInventoriesSold(payment.orderId);
-    const soldInventoriesByVariant = new Map<string, typeof soldInventories>();
-    for (const inventory of soldInventories) {
-      const inventories = soldInventoriesByVariant.get(inventory.variantId) || [];
-      inventories.push(inventory);
-      soldInventoriesByVariant.set(inventory.variantId, inventories);
-    }
-
-    for (const item of payment.order.items) {
-      const hasSupplier = await this.prisma.supplierVariant.count({
-        where: {
-          variantId: item.variantId,
-          active: true,
-          supplier: { active: true },
-        },
-      });
-      if (hasSupplier > 0) {
-        continue;
-      }
-
-      const existingDeliveryInventoryIds = new Set(item.deliveries.map((delivery) => delivery.inventoryId));
-      const inventories = soldInventoriesByVariant.get(item.variantId) || [];
-      const missingInventories = inventories
-        .filter((inventory) => !existingDeliveryInventoryIds.has(inventory.id))
-        .slice(0, Math.max(item.quantity - item.deliveries.length, 0));
-
-      for (let index = 0; index < missingInventories.length; index += 1) {
-        const inventory = missingInventories[index];
-        if (!item.inventoryId && index === 0 && inventory) {
-          await this.prisma.orderItem.update({
-            where: { id: item.id },
-            data: { inventoryId: inventory.id },
-          });
-        }
-
-        if (inventory) {
-          await this.deliveriesService.createDelivery(item.id, inventory.id);
-        }
-      }
-
-      if (item.deliveries.length + missingInventories.length < item.quantity) {
-        throw new BadRequestException('Reserved inventory is missing for paid order');
-      }
-    }
-
-    await this.inventoriesService.createSupplierRequestsForPaidOrder(payment.orderId);
-
-    let hasAnySupplierItem = false;
-    for (const item of payment.order.items) {
-      const hasSupplier = await this.prisma.supplierVariant.count({
-        where: {
-          variantId: item.variantId,
-          active: true,
-          supplier: { active: true },
-        },
-      });
-      if (hasSupplier > 0) {
-        hasAnySupplierItem = true;
-        break;
-      }
-    }
-
-    if (!hasAnySupplierItem) {
-      await this.prisma.order.update({
-        where: { id: payment.orderId },
-        data: { status: OrderStatus.DELIVERED },
-      });
-      await this.deliveriesService.sendOrderDeliveryMessage(payment.orderId);
-    }
-
-    await Promise.all(
-      Array.from(new Set(payment.order.items.map((item) => item.variantId))).map((variantId) =>
-        this.inventoriesService.announceOutOfStockIfNeeded(variantId),
-      ),
-    );
-
-    return payment;
+    await this.fulfillPaidOrder(payment.donHangId);
+    return this.prisma.thanhToan.findUniqueOrThrow({ where: { id: paymentId } });
   }
 
   async getPaymentStatus(paymentId: string) {
     await this.syncPendingPayosPayment(paymentId);
     await this.expirePendingPayment(paymentId);
 
-    const payment = await this.prisma.payment.findUniqueOrThrow({
+    const payment = await this.prisma.thanhToan.findUniqueOrThrow({
       where: { id: paymentId },
       include: {
-        order: {
+        donHang: {
           include: {
-            items: {
+            chiTiet: {
               include: {
-                variant: { include: { product: true } },
-                deliveries: {
-                  where: { isDeleted: false },
-                  orderBy: { createdAt: 'asc' },
-                },
+                goiDichVu: { include: { sanPham: true } },
+                giaoHang: { where: { daXoa: false }, orderBy: { taoLuc: 'asc' } },
               },
             },
           },
@@ -317,97 +193,175 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    const deliveryMessage =
-      payment.order.status === OrderStatus.DELIVERED
-        ? await this.deliveriesService.generateDeliveryContent(payment.orderId)
-        : null;
+    const deliveries = payment.donHang.chiTiet.flatMap((item) =>
+      item.giaoHang.map((delivery) => ({
+        id: delivery.id,
+        status: delivery.trangThai,
+        deliveredAt: delivery.giaoLuc,
+        content: delivery.noiDungGiao,
+        productName: item.goiDichVu.sanPham.tenSanPham,
+        variantName: item.goiDichVu.tenGoi,
+      })),
+    );
 
     return {
       payment: {
         id: payment.id,
-        status: payment.status,
-        paidAt: payment.paidAt,
-        expiresAt: this.getPaymentExpiresAt(payment),
+        status: payment.trangThai,
+        paidAt: payment.thanhToanLuc,
+        expiresAt: this.getPaymentExpiresAt(payment.duLieuQr),
       },
       order: {
-        id: payment.order.id,
-        orderNo: payment.order.orderNo,
-        status: payment.order.status,
-        paymentStatus: payment.order.paymentStatus,
+        id: payment.donHang.id,
+        orderNo: payment.donHang.maDonHang,
+        status: payment.donHang.trangThai,
+        paymentStatus: payment.donHang.trangThaiThanhToan,
       },
-      deliveries: payment.order.items.flatMap((item) =>
-        item.deliveries.map((delivery) => ({
-          id: delivery.id,
-          status: delivery.status,
-          deliveredAt: delivery.deliveredAt,
-          content: delivery.deliveryContent,
-          productName: item.variant.product.name,
-          variantName: item.variant.name,
-        })),
-      ),
-      deliveryMessage,
+      deliveries,
+      deliveryMessage: deliveries.map((delivery) => delivery.content).filter(Boolean).join('\n\n') || null,
     };
   }
 
   async expireOrderPendingPayments(orderId: string) {
-    const order = await this.prisma.order.findUnique({
+    const payments = await this.prisma.thanhToan.findMany({
+      where: { donHangId: orderId, trangThai: TrangThaiThanhToan.CHO_THANH_TOAN },
+      select: { id: true },
+    });
+    await Promise.all(payments.map((payment) => this.expirePayment(payment.id)));
+  }
+
+  private async fulfillPaidOrder(orderId: string) {
+    const order = await this.prisma.donHang.findUniqueOrThrow({
       where: { id: orderId },
       include: {
-        payments: {
-          where: { status: PaymentStatus.PENDING },
-          select: { id: true },
+        chiTiet: {
+          where: { daXoa: false },
+          include: {
+            goiPhuongThuc: { include: { phuongThuc: true } },
+            giaoHang: { where: { daXoa: false } },
+          },
         },
       },
     });
 
-    if (!order) return;
+    for (const item of order.chiTiet) {
+      if (item.giaoHang.length >= item.soLuong) continue;
+      const kieu = item.goiPhuongThuc.phuongThuc.kieu;
 
-    await Promise.all(order.payments.map((payment) => this.expirePayment(payment.id)));
+      if (kieu === KieuPhuongThucGiaoHang.GUI_LINK) {
+        await this.deliverFromInternalResource(item.id, item.goiDichVuId, item.goiPhuongThucId);
+        continue;
+      }
+
+      await this.createSupplierRequest(item.id, item.soLuong);
+    }
+
+    const refreshed = await this.prisma.donHang.findUniqueOrThrow({
+      where: { id: orderId },
+      include: { chiTiet: { include: { giaoHang: { where: { daXoa: false } } } } },
+    });
+    const expected = refreshed.chiTiet.reduce((sum, item) => sum + item.soLuong, 0);
+    const delivered = refreshed.chiTiet.reduce(
+      (sum, item) => sum + item.giaoHang.filter((delivery) => delivery.trangThai === TrangThaiGiaoHang.DA_GIAO).length,
+      0,
+    );
+
+    await this.prisma.donHang.update({
+      where: { id: orderId },
+      data: { trangThai: delivered >= expected ? TrangThaiDonHang.DA_GIAO : TrangThaiDonHang.CHO_NHA_CUNG_CAP },
+    });
   }
 
-  private async syncPendingPayosPayment(paymentId: string) {
-    const payment = await this.prisma.payment.findUniqueOrThrow({
-      where: { id: paymentId },
-      include: { order: true },
+  private async deliverFromInternalResource(chiTietDonHangId: string, goiDichVuId: string, goiPhuongThucId: string) {
+    const resource = await this.prisma.taiNguyenGiaoHang.findFirst({
+      where: {
+        goiDichVuId,
+        goiPhuongThucId,
+        daXoa: false,
+        trangThai: TrangThaiTaiNguyen.SAN_SANG,
+      },
+      orderBy: { taoLuc: 'asc' },
     });
 
-    if (payment.status !== PaymentStatus.PENDING || payment.provider !== PaymentProvider.BANKING_QR) {
+    if (!resource) {
+      await this.createSupplierRequest(chiTietDonHangId, 1);
       return;
     }
 
-    const orderCode = this.getPayosOrderCode(payment.order.orderNo);
+    const content = this.renderDeliveryContent(resource.duLieuCongKhai);
+    await this.prisma.$transaction([
+      this.prisma.taiNguyenGiaoHang.update({
+        where: { id: resource.id },
+        data: { trangThai: TrangThaiTaiNguyen.DA_BAN, soLanDaDung: { increment: 1 }, banLuc: new Date() },
+      }),
+      this.prisma.giaoHang.create({
+        data: {
+          chiTietDonHangId,
+          taiNguyenId: resource.id,
+          nguonGiaoHang: LoaiNguonGiaoHang.KHO_NOI_BO,
+          noiDungGiao: content,
+          duLieuGiao: resource.duLieuCongKhai || undefined,
+          giaoLuc: new Date(),
+          trangThai: TrangThaiGiaoHang.DA_GIAO,
+        },
+      }),
+    ]);
+  }
+
+  private async createSupplierRequest(chiTietDonHangId: string, quantity: number) {
+    const existing = await this.prisma.yeuCauNhaCungCap.count({ where: { chiTietDonHangId } });
+    if (existing) return;
+
+    const item = await this.prisma.chiTietDonHang.findUniqueOrThrow({
+      where: { id: chiTietDonHangId },
+      include: { goiDichVu: true },
+    });
+    const supplier = await this.prisma.nhaCungCapGoiDichVu.findFirst({
+      where: {
+        goiDichVuId: item.goiDichVuId,
+        goiPhuongThucId: item.goiPhuongThucId,
+        daXoa: false,
+        trangThai: 'DANG_HOAT_DONG',
+        nhaCungCap: { daXoa: false, trangThai: 'DANG_HOAT_DONG' },
+      },
+      orderBy: [{ uuTien: 'asc' }, { taoLuc: 'asc' }],
+    });
+    if (!supplier) return;
+
+    await this.prisma.yeuCauNhaCungCap.create({
+      data: {
+        chiTietDonHangId,
+        nhaCungCapId: supplier.nhaCungCapId,
+        maYeuCau: `SUP${Date.now()}${Math.floor(Math.random() * 1000)}`,
+        soLuong: quantity,
+        duLieuGui: item.duLieuKhachNhap || undefined,
+        trangThai: TrangThaiYeuCauNhaCungCap.CHO_NHAN,
+      },
+    });
+  }
+
+  private async syncPendingPayosPayment(paymentId: string) {
+    const payment = await this.prisma.thanhToan.findUniqueOrThrow({ where: { id: paymentId }, include: { donHang: true } });
+    if (payment.trangThai !== TrangThaiThanhToan.CHO_THANH_TOAN || payment.nhaCungCapThanhToan !== 'PAYOS') return;
 
     try {
-      const paymentLink = await this.payosService.getPaymentLink(orderCode);
-      if (paymentLink.status !== 'PAID') {
-        return;
-      }
-
-      if (this.toVndInteger(payment.amount) !== Number(paymentLink.amount)) {
-        throw new BadRequestException('Payment amount does not match payOS payment link');
-      }
-
-      await this.confirmPayment(payment.id);
+      const paymentLink = await this.payosService.getPaymentLink(this.getPayosOrderCode(payment.donHang.maDonHang));
+      if (paymentLink.status === 'PAID') await this.confirmPayment(payment.id);
     } catch (error) {
-      this.logger.warn(
-        `Cannot sync payOS payment ${payment.id}: ${
-          error instanceof Error ? error.message : 'Unknown error'
-        }`,
-      );
+      this.logger.warn(`Cannot sync payOS payment ${payment.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   private async processExpiredPendingPayments() {
-    const candidates = await this.prisma.payment.findMany({
+    const candidates = await this.prisma.thanhToan.findMany({
       where: {
-        status: PaymentStatus.PENDING,
-        createdAt: { lt: new Date(Date.now() - PAYMENT_QR_TTL_MS) },
+        trangThai: TrangThaiThanhToan.CHO_THANH_TOAN,
+        taoLuc: { lt: new Date(Date.now() - PAYMENT_QR_TTL_MS) },
       },
       select: { id: true },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { taoLuc: 'asc' },
       take: 100,
     });
-
     for (const candidate of candidates) {
       await this.syncPendingPayosPayment(candidate.id);
       await this.expirePendingPayment(candidate.id);
@@ -415,89 +369,43 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async expirePendingPayment(paymentId: string) {
-    const payment = await this.prisma.payment.findUniqueOrThrow({
-      where: { id: paymentId },
-    });
-
-    if (payment.status !== PaymentStatus.PENDING || !this.isExpiredPayment(payment)) {
-      return;
-    }
-
+    const payment = await this.prisma.thanhToan.findUniqueOrThrow({ where: { id: paymentId } });
+    if (payment.trangThai !== TrangThaiThanhToan.CHO_THANH_TOAN || !this.isExpiredPayment(payment.duLieuQr)) return;
     await this.expirePayment(payment.id);
   }
 
   private async expirePayment(paymentId: string) {
-    const payment = await this.prisma.payment.findUnique({
-      where: { id: paymentId },
+    const payment = await this.prisma.thanhToan.findUnique({ where: { id: paymentId } });
+    if (!payment) return;
+
+    const updated = await this.prisma.thanhToan.updateMany({
+      where: { id: paymentId, trangThai: TrangThaiThanhToan.CHO_THANH_TOAN },
+      data: { trangThai: TrangThaiThanhToan.THAT_BAI },
     });
-
-    if (!payment) return { count: 0 };
-
-    const updated = await this.prisma.payment.updateMany({
-      where: {
-        id: paymentId,
-        status: PaymentStatus.PENDING,
-      },
-      data: { status: PaymentStatus.FAILED },
-    });
-
     if (updated.count) {
-      await this.inventoriesService.releaseReservationForOrder(payment.orderId);
-      await this.prisma.order.updateMany({
-        where: {
-          id: payment.orderId,
-          status: OrderStatus.PENDING_PAYMENT,
-        },
-        data: {
-          status: OrderStatus.CANCELLED,
-          paymentStatus: PaymentStatus.FAILED,
-        },
+      await this.prisma.donHang.updateMany({
+        where: { id: payment.donHangId, trangThai: TrangThaiDonHang.CHO_THANH_TOAN },
+        data: { trangThai: TrangThaiDonHang.DA_HUY, trangThaiThanhToan: TrangThaiThanhToan.THAT_BAI },
       });
     }
-
-    return updated;
   }
 
   private async expirePaymentByOrderCode(orderCode: number) {
     if (!Number.isSafeInteger(orderCode)) return;
-
-    const order = await this.prisma.order.findUnique({
-      where: { orderNo: `AI${orderCode}` },
-      include: { payments: true },
-    });
-
+    const order = await this.prisma.donHang.findUnique({ where: { maDonHang: `AI${orderCode}` }, include: { thanhToan: true } });
     if (!order) return;
-
-    await Promise.all(
-      order.payments
-        .filter((payment) => payment.status === PaymentStatus.PENDING)
-        .map((payment) => this.expirePayment(payment.id)),
-    );
+    await Promise.all(order.thanhToan.filter((payment) => payment.trangThai === TrangThaiThanhToan.CHO_THANH_TOAN).map((payment) => this.expirePayment(payment.id)));
   }
 
-  private isExpiredPayment(payment: { qrContent: string | null }) {
-    const expiresAt = this.getPaymentExpiresAt(payment);
+  private isExpiredPayment(duLieuQr: Prisma.JsonValue | null) {
+    const expiresAt = this.getPaymentExpiresAt(duLieuQr);
     return Boolean(expiresAt && new Date(expiresAt).getTime() <= Date.now());
   }
 
-  private getPaymentExpiresAt(payment: { qrContent: string | null }) {
-    const qrContent = this.parseQrContent(payment.qrContent);
-    if (!qrContent || typeof qrContent !== 'object' || !('expiresAt' in qrContent)) {
-      return null;
-    }
-
-    const expiresAt = (qrContent as { expiresAt?: unknown }).expiresAt;
+  private getPaymentExpiresAt(duLieuQr: Prisma.JsonValue | null) {
+    if (!duLieuQr || typeof duLieuQr !== 'object' || Array.isArray(duLieuQr)) return null;
+    const expiresAt = (duLieuQr as Record<string, unknown>).expiresAt;
     return typeof expiresAt === 'string' ? expiresAt : null;
-  }
-
-  private parseQrContent(qrContent: string | null) {
-    if (!qrContent) return null;
-
-    try {
-      return JSON.parse(qrContent) as unknown;
-    } catch {
-      return null;
-    }
   }
 
   private createPaymentContent(orderNo: string) {
@@ -507,35 +415,20 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     const prefix = configuredPrefix.trim() || 'AI Store';
     const suffix = orderCode.slice(-15);
     const maxPrefixLength = Math.max(maxDescriptionLength - suffix.length - 1, 1);
-
     return `${prefix.slice(0, maxPrefixLength)} ${suffix}`.slice(0, maxDescriptionLength);
   }
 
   private getPayosOrderCode(orderNo: string) {
     const orderCode = Number(orderNo.replace(/^AI/, ''));
-    if (!Number.isSafeInteger(orderCode)) {
-      throw new BadRequestException('Invalid order code');
-    }
+    if (!Number.isSafeInteger(orderCode)) throw new BadRequestException('Invalid order code');
     return orderCode;
-  }
-
-  private toPayosItems(order: OrderForPayment) {
-    return order.items.map((item) => ({
-      name: `${item.variant.product.name} - ${item.variant.name}`.slice(0, 255),
-      quantity: item.quantity,
-      price: this.toVndInteger(item.unitPrice),
-    }));
   }
 
   private toVndInteger(value: Prisma.Decimal) {
     const integer = value.toDecimalPlaces(0);
-    if (!integer.equals(value)) {
-      throw new BadRequestException('Payment amount must be an integer VND amount');
-    }
+    if (!integer.equals(value)) throw new BadRequestException('Payment amount must be an integer VND amount');
     const amount = integer.toNumber();
-    if (!Number.isSafeInteger(amount) || amount <= 0) {
-      throw new BadRequestException('Invalid payment amount');
-    }
+    if (!Number.isSafeInteger(amount) || amount <= 0) throw new BadRequestException('Invalid payment amount');
     return amount;
   }
 
@@ -543,5 +436,12 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     const miniAppUrl = this.configService.get<string>('TELEGRAM_MINIAPP_URL') || 'http://localhost:405';
     const separator = miniAppUrl.includes('?') ? '&' : '?';
     return `${miniAppUrl}${separator}${paymentStatus}`;
+  }
+
+  private renderDeliveryContent(value: Prisma.JsonValue | null) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return 'Thông tin giao hàng đã sẵn sàng.';
+    return Object.entries(value)
+      .map(([key, item]) => `${key}: ${String(item ?? '')}`)
+      .join('\n');
   }
 }

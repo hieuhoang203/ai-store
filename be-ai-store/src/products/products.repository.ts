@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { TrangThaiChung } from '../../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service';
 
 @Injectable()
@@ -6,75 +7,92 @@ export class ProductsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   findActiveProducts() {
-    return this.prisma.product.findMany({
-      where: { isDeleted: false, isActive: true },
+    return this.prisma.sanPham.findMany({
+      where: {
+        daXoa: false,
+        trangThai: TrangThaiChung.DANG_HOAT_DONG,
+        loai: { daXoa: false, trangThai: TrangThaiChung.DANG_HOAT_DONG },
+      },
       include: {
-        categoryRef: true,
-        variants: {
-          where: { isDeleted: false, active: true },
-          include: {
-            supplierVariants: {
-              where: { active: true, supplier: { active: true } },
-              select: { availableQuantity: true, reservedQuantity: true },
-            },
+        loai: true,
+        goiDichVu: {
+          where: {
+            daXoa: false,
+            trangThai: TrangThaiChung.DANG_HOAT_DONG,
+            choPhepMua: true,
           },
+          orderBy: [{ thuTu: 'asc' }, { taoLuc: 'asc' }],
         },
       },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: [{ thuTu: 'asc' }, { taoLuc: 'desc' }],
     });
   }
 
   findActiveCategories() {
-    return this.prisma.category.findMany({
-      where: { isDeleted: false },
-      select: {
-        id: true,
-        name: true,
-        icon: true,
-        _count: {
-          select: {
-            products: {
-              where: { isDeleted: false, isActive: true },
+    return this.prisma.loaiSanPham.findMany({
+      where: {
+        daXoa: false,
+        trangThai: TrangThaiChung.DANG_HOAT_DONG,
+        sanPham: {
+          some: {
+            daXoa: false,
+            trangThai: TrangThaiChung.DANG_HOAT_DONG,
+            goiDichVu: {
+              some: {
+                daXoa: false,
+                trangThai: TrangThaiChung.DANG_HOAT_DONG,
+                choPhepMua: true,
+              },
             },
           },
         },
       },
-      orderBy: { name: 'asc' },
+      include: {
+        _count: {
+          select: {
+            sanPham: {
+              where: {
+                daXoa: false,
+                trangThai: TrangThaiChung.DANG_HOAT_DONG,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ thuTu: 'asc' }, { taoLuc: 'desc' }],
     });
   }
 
   findActiveProductsByCategory(categoryId: string) {
-    return this.prisma.product.findMany({
-      where: { categoryId, isDeleted: false, isActive: true },
+    return this.prisma.sanPham.findMany({
+      where: {
+        loaiId: categoryId,
+        daXoa: false,
+        trangThai: TrangThaiChung.DANG_HOAT_DONG,
+      },
       include: {
-        categoryRef: true,
-        variants: {
-          where: { isDeleted: false, active: true },
-          include: {
-            supplierVariants: {
-              where: { active: true, supplier: { active: true } },
-              select: { availableQuantity: true, reservedQuantity: true },
-            },
+        loai: true,
+        goiDichVu: {
+          where: {
+            daXoa: false,
+            trangThai: TrangThaiChung.DANG_HOAT_DONG,
+            choPhepMua: true,
           },
+          orderBy: [{ thuTu: 'asc' }, { taoLuc: 'asc' }],
         },
       },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: [{ thuTu: 'asc' }, { taoLuc: 'desc' }],
     });
   }
 
   findById(id: string) {
-    return this.prisma.product.findFirst({
-      where: { id, isDeleted: false, isActive: true },
+    return this.prisma.sanPham.findFirst({
+      where: { id, daXoa: false },
       include: {
-        categoryRef: true,
-        variants: {
-          where: { isDeleted: false, active: true },
-          include: {
-            supplierVariants: {
-              where: { active: true, supplier: { active: true } },
-              select: { availableQuantity: true, reservedQuantity: true },
-            },
-          },
+        loai: true,
+        goiDichVu: {
+          where: { daXoa: false, choPhepMua: true },
+          orderBy: [{ thuTu: 'asc' }, { taoLuc: 'asc' }],
         },
       },
     });

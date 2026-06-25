@@ -16,7 +16,7 @@ export class AdminRepository {
   ): Promise<AdminListResult> {
     const delegate = this.getDelegate(config);
     const where = this.buildWhere(config, query);
-    const orderBy = { [query.sortBy || config.defaultSort || 'createdAt']: query.sortOrder };
+    const orderBy = { [query.sortBy || config.defaultSort || 'taoLuc']: query.sortOrder };
     const [data, total] = await Promise.all([
       delegate.findMany({
         where,
@@ -68,7 +68,7 @@ export class AdminRepository {
     if (config.softDelete) {
       return this.getDelegate(config).update({
         where: this.buildUniqueWhere(config, recordId),
-        data: { isDeleted: true },
+        data: { daXoa: true },
       });
     }
 
@@ -79,7 +79,7 @@ export class AdminRepository {
 
   async count(config: AdminEntityConfig, extraWhere: Record<string, unknown> = {}) {
     return this.getDelegate(config).count({
-      where: config.softDelete ? { isDeleted: false, ...extraWhere } : extraWhere,
+      where: config.softDelete ? { daXoa: false, ...extraWhere } : extraWhere,
     });
   }
 
@@ -97,7 +97,7 @@ export class AdminRepository {
     const where: Record<string, unknown> = {};
 
     if (config.softDelete) {
-      where.isDeleted = false;
+      where.daXoa = false;
     }
 
     if (query.search && config.searchableFields?.length) {
@@ -116,7 +116,7 @@ export class AdminRepository {
   }
 
   private withSoftDelete(config: AdminEntityConfig, where: Record<string, unknown>) {
-    return config.softDelete ? { ...where, isDeleted: false } : where;
+    return config.softDelete ? { ...where, daXoa: false } : where;
   }
 
   private buildUniqueWhere(config: AdminEntityConfig, recordId: string) {

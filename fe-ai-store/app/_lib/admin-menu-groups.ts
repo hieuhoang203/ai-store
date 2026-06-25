@@ -27,61 +27,59 @@ const GROUPS: Array<{
   entityKeys: string[];
 }> = [
   {
-    key: "catalog",
-    label: "Catalog",
+    key: "danh-muc",
+    label: "Danh mục sản phẩm",
     icon: PackageSearch,
-    entityKeys: ["categories", "products", "product-variants", "reviews"],
+    entityKeys: ["loai-san-pham", "san-pham", "goi-dich-vu", "phuong-thuc-giao-hang", "goi-phuong-thuc", "danh-gia"],
   },
   {
-    key: "inventory",
-    label: "Fulfillment",
+    key: "giao-hang-va-supplier",
+    label: "Giao hàng & supplier",
     icon: Boxes,
     entityKeys: [
-      "suppliers",
-      "supplier-variants",
-      "supplier-requests",
-      "supplier-request-items",
-      "fulfillments",
-      "fulfillment-resources",
-      "inventories",
-      "deliveries",
+      "nha-cung-cap",
+      "link-moi-nha-cung-cap",
+      "supplier-goi-dich-vu",
+      "tai-nguyen-giao-hang",
+      "yeu-cau-nha-cung-cap",
+      "giao-hang",
     ],
   },
   {
-    key: "sales",
-    label: "Sales",
+    key: "ban-hang",
+    label: "Bán hàng",
     icon: ShoppingCart,
-    entityKeys: ["orders", "order-items", "payments"],
+    entityKeys: ["don-hang", "chi-tiet-don-hang", "thanh-toan"],
   },
   {
-    key: "customers",
-    label: "Customers",
+    key: "nguoi-dung",
+    label: "Người dùng",
     icon: Users,
-    entityKeys: ["users", "roles", "user-roles"],
+    entityKeys: ["nguoi-dung", "vai-tro"],
   },
   {
     key: "marketing",
     label: "Marketing",
     icon: Megaphone,
-    entityKeys: ["coupons", "coupon-products", "coupon-users", "coupon-usages"],
+    entityKeys: ["ma-giam-gia"],
   },
   {
-    key: "support",
-    label: "Support",
+    key: "ho-tro",
+    label: "Hỗ trợ",
     icon: Headphones,
-    entityKeys: ["tickets", "notifications"],
+    entityKeys: ["ticket-ho-tro", "thong-bao"],
   },
   {
-    key: "security",
-    label: "Security",
+    key: "he-thong",
+    label: "Hệ thống",
     icon: ShieldCheck,
-    entityKeys: ["admin-login-tokens", "refresh-tokens", "audit-logs", "activity-logs"],
+    entityKeys: ["audit-log"],
   },
 ];
 
 const FALLBACK_GROUP = {
-  key: "system",
-  label: "System",
+  key: "khac",
+  label: "Khác",
   icon: ClipboardList,
 };
 
@@ -124,7 +122,7 @@ export function getGroupKeyForEntity(entityKey: string, groups: MenuGroup[]) {
 }
 
 export function getEntityIcon(entityKey: string): LucideIcon {
-  if (entityKey === "notifications") return Bell;
+  if (entityKey === "thong-bao") return Bell;
   return ClipboardList;
 }
 

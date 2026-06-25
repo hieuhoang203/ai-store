@@ -80,9 +80,11 @@ export class AdminController {
     return this.adminService.update(entity, id, payload);
   }
 
-  @Patch('coupons/:id/status')
-  updateCouponStatus(@Param('id') id: string, @Body() payload: { isActive?: boolean }) {
-    return this.adminService.update('coupons', id, { isActive: Boolean(payload.isActive) });
+  @Patch('ma-giam-gia/:id/status')
+  updateCouponStatus(@Param('id') id: string, @Body() payload: { trangThai?: string }) {
+    return this.adminService.update('ma-giam-gia', id, {
+      trangThai: payload.trangThai || 'DANG_HOAT_DONG',
+    });
   }
 
   @Delete(':entity/:id')

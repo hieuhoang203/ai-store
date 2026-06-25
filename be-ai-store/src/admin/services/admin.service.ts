@@ -1,22 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
-import { AuditAction, DeliveryMethod, Prisma, TicketStatus } from '../../../generated/prisma/client.js';
-import { InventoryStatus, OrderStatus, PaymentStatus } from '../models/admin-enums.model';
+import { Prisma } from '../../../generated/prisma/client.js';
 import { PrismaService } from '../../database/prisma.service';
-import { DeliveriesService } from '../../deliveries/deliveries.service';
-import { InventoryPasswordService } from '../../inventories/inventory-password.service';
-import { InventoriesService } from '../../inventories/inventories.service';
-import { NotificationsService } from '../../notifications/notifications.service';
+import { AdminEntityConfig, AdminFieldConfig, AdminListQuery } from '../interfaces/admin-crud.interface';
 import { ADMIN_ENTITIES, ADMIN_ENTITY_MAP } from '../models/admin-entity.model';
-import {
-
-  AdminEntityConfig,
-  AdminEntitySummary,
-  AdminFieldConfig,
-  AdminListQuery,
-} from '../interfaces/admin-crud.interface';
 import { AdminRepository } from '../repositories/admin.repository';
-import { RedisService } from '../../redis/redis.service';
 
 type UploadedImageFile = {
   buffer: Buffer;
@@ -30,14 +18,9 @@ export class AdminService {
   constructor(
     private readonly repository: AdminRepository,
     private readonly prisma: PrismaService,
-    private readonly deliveriesService: DeliveriesService,
-    private readonly inventoryPasswordService: InventoryPasswordService,
-    private readonly notificationsService: NotificationsService,
-    private readonly redisService: RedisService,
-    private readonly inventoriesService: InventoriesService,
   ) {}
 
-  async getEntities(): Promise<AdminEntitySummary[]> {
+  async getEntities() {
     return Promise.all(
       ADMIN_ENTITIES.map(async (entity) => ({
         ...entity,
@@ -54,8 +37,7 @@ export class AdminService {
 
   async list(entityKey: string, query: AdminListQuery) {
     const config = this.getConfig(entityKey);
-    const normalizedQuery = this.normalizeQuery(config, query);
-    const result = await this.repository.list(config, normalizedQuery);
+    const result = await this.repository.list(config, this.normalizeQuery(config, query));
 
     return {
       ...result,
@@ -65,219 +47,106 @@ export class AdminService {
 
   async detail(entityKey: string, recordId: string) {
     const config = this.getConfig(entityKey);
-    const record = this.serializeRecord(config, await this.repository.detail(config, recordId));
-
-    if (entityKey === 'users') {
-      record.roleId = await this.getUserRoleId(String(record.__recordId));
-    }
-    this.decryptInventoryPassword(entityKey, record);
-
-    return record;
+    return this.serializeRecord(config, await this.repository.detail(config, recordId));
   }
 
   async create(entityKey: string, payload: Record<string, unknown>) {
     const config = this.getConfig(entityKey);
-    const roleId = entityKey === 'users' ? payload.roleId : undefined;
     const data = this.sanitizePayload(config, payload, 'create');
-    this.normalizeCouponPayload(entityKey, data);
-    this.encryptInventoryPassword(entityKey, data);
-    const record =
-      entityKey === 'fulfillment-resources'
-        ? await this.deliveriesService.createFulfillmentResource(
-            String(data.fulfillmentId),
-            String(data.type) as DeliveryMethod,
-            this.toInputJsonValue(data.payload),
-          )
-        : await this.repository.create(config, data);
-
-    if (entityKey === 'users' && roleId) {
-      await this.assignUserRole(String((record as Record<string, unknown>).id), String(roleId));
-    }
-    await this.announceCreatedEntity(entityKey, record);
-    await this.auditCouponChange(entityKey, AuditAction.COUPON_CREATE, null, record);
-    await this.invalidateCategoryCache(entityKey);
-
-    if (entityKey === 'inventories' && record && typeof record === 'object' && 'variantId' in record) {
-      const variantId = String((record as any).variantId || '');
-      if (variantId) {
-        await this.inventoriesService.refreshVariantDisplayStock(this.prisma, variantId);
-      }
-    }
-
-    const serialized = this.serializeRecord(config, record);
-    this.decryptInventoryPassword(entityKey, serialized);
-    return serialized;
+    const record = await this.repository.create(config, data);
+    return this.serializeRecord(config, record);
   }
 
   async update(entityKey: string, recordId: string, payload: Record<string, unknown>) {
     const config = this.getConfig(entityKey);
-    const roleId = entityKey === 'users' ? payload.roleId : undefined;
-    const previousRecord = entityKey === 'tickets' ? await this.repository.detail(config, recordId) : null;
-    const closeReason = typeof payload.closeReason === 'string' ? payload.closeReason : undefined;
     const data = this.sanitizePayload(config, payload, 'update');
-    const couponPreviousRecord = entityKey === 'coupons' ? await this.repository.detail(config, recordId) : null;
-    this.normalizeCouponPayload(entityKey, data);
-    this.encryptInventoryPassword(entityKey, data);
-
-    let previousVariantId: string | null = null;
-    if (entityKey === 'inventories') {
-      const currentInventory = await this.prisma.inventory.findUnique({
-        where: { id: recordId },
-        select: { variantId: true },
-      });
-      previousVariantId = currentInventory?.variantId || null;
-    }
-
     const record = await this.repository.update(config, recordId, data);
-
-    if (entityKey === 'users' && roleId !== undefined) {
-      await this.assignUserRole(recordId, roleId ? String(roleId) : null);
-    }
-    await this.announceTicketStatusChanged(entityKey, previousRecord, record, closeReason);
-    await this.auditCouponChange(
-      entityKey,
-      data.isActive === false ? AuditAction.COUPON_DISABLE : AuditAction.COUPON_UPDATE,
-      couponPreviousRecord,
-      record,
-    );
-    await this.invalidateCategoryCache(entityKey);
-
-    if (entityKey === 'inventories') {
-      if (previousVariantId) {
-        await this.inventoriesService.refreshVariantDisplayStock(this.prisma, previousVariantId);
-      }
-      if (record && typeof record === 'object' && 'variantId' in record) {
-        const newVariantId = String((record as any).variantId || '');
-        if (newVariantId && newVariantId !== previousVariantId) {
-          await this.inventoriesService.refreshVariantDisplayStock(this.prisma, newVariantId);
-        }
-      }
-    }
-
-    const serialized = this.serializeRecord(config, record);
-    this.decryptInventoryPassword(entityKey, serialized);
-    return serialized;
+    return this.serializeRecord(config, record);
   }
 
   async remove(entityKey: string, recordId: string) {
     const config = this.getConfig(entityKey);
-    const previousRecord = entityKey === 'coupons' ? await this.repository.detail(config, recordId) : null;
-    const removed = await this.repository.remove(config, recordId);
-    await this.auditCouponChange(entityKey, AuditAction.COUPON_DELETE, previousRecord, removed);
-    await this.invalidateCategoryCache(entityKey);
-
-    if (entityKey === 'inventories' && removed && typeof removed === 'object' && 'variantId' in removed) {
-      const variantId = String((removed as any).variantId || '');
-      if (variantId) {
-        await this.inventoriesService.refreshVariantDisplayStock(this.prisma, variantId);
-      }
-    }
-
-    return this.serializeRecord(config, removed);
+    return this.serializeRecord(config, await this.repository.remove(config, recordId));
   }
 
   async dashboard() {
     const [
-      users,
-      products,
-      variants,
-      inventories,
-      orders,
-      tickets,
-      revenue,
-      todayOrders,
-      paidOrders,
-      inventoryRows,
-      orderRows,
-      recentOrders,
-      recentTickets,
+      nguoiDung,
+      loaiSanPham,
+      sanPham,
+      goiDichVu,
+      nhaCungCap,
+      donHang,
+      thanhToanDaTra,
+      doanhThu,
+      donHangTheoTrangThai,
+      thanhToanTheoTrangThai,
+      yeuCauNhaCungCap,
+      ticketHoTro,
+      donMoi,
+      ticketMoi,
     ] = await Promise.all([
-      this.repository.count(this.getConfig('users')),
-      this.repository.count(this.getConfig('products')),
-      this.repository.count(this.getConfig('product-variants')),
-      this.repository.count(this.getConfig('inventories')),
-      this.repository.count(this.getConfig('orders')),
-      this.repository.count(this.getConfig('tickets')),
-      this.prisma.order.aggregate({
-        _sum: { totalAmount: true },
-        where: { status: { in: [OrderStatus.PAID, OrderStatus.DELIVERED] } },
+      this.repository.count(this.getConfig('nguoi-dung')),
+      this.repository.count(this.getConfig('loai-san-pham')),
+      this.repository.count(this.getConfig('san-pham')),
+      this.repository.count(this.getConfig('goi-dich-vu')),
+      this.repository.count(this.getConfig('nha-cung-cap')),
+      this.repository.count(this.getConfig('don-hang')),
+      this.prisma.thanhToan.count({ where: { trangThai: 'DA_THANH_TOAN', daXoa: false } }),
+      this.prisma.donHang.aggregate({
+        _sum: { tongTien: true },
+        where: { trangThaiThanhToan: 'DA_THANH_TOAN', daXoa: false },
       }),
-      this.prisma.order.count({
-        where: { createdAt: { gte: this.startOfToday() } },
-      }),
-      this.prisma.order.count({ where: { paymentStatus: PaymentStatus.PAID } }),
-      this.prisma.inventory.groupBy({
-        by: ['status'],
-        where: { isDeleted: false, status: { in: Object.values(InventoryStatus) } },
-        _count: { status: true },
-      }),
-      this.prisma.order.groupBy({
-        by: ['status'],
-        _count: { status: true },
-      }),
-      this.prisma.order.findMany({
-        take: 8,
-        orderBy: { createdAt: 'desc' },
-      }),
-      this.prisma.ticket.findMany({
-        take: 8,
-        where: { isDeleted: false },
-        orderBy: { createdAt: 'desc' },
-      }),
+      this.prisma.donHang.groupBy({ by: ['trangThai'], _count: { trangThai: true } }),
+      this.prisma.thanhToan.groupBy({ by: ['trangThai'], _count: { trangThai: true } }),
+      this.prisma.yeuCauNhaCungCap.count(),
+      this.repository.count(this.getConfig('ticket-ho-tro')),
+      this.prisma.donHang.findMany({ take: 8, orderBy: { taoLuc: 'desc' } }),
+      this.prisma.ticketHoTro.findMany({ take: 8, where: { daXoa: false }, orderBy: { taoLuc: 'desc' } }),
     ]);
 
     return this.serialize({
       cards: {
-        users,
-        products,
-        variants,
-        inventories,
-        orders,
-        tickets,
-        todayOrders,
-        paidOrders,
-        revenue: revenue._sum.totalAmount ?? 0,
+        nguoiDung,
+        loaiSanPham,
+        sanPham,
+        goiDichVu,
+        nhaCungCap,
+        donHang,
+        thanhToanDaTra,
+        yeuCauNhaCungCap,
+        ticketHoTro,
+        doanhThu: doanhThu._sum.tongTien ?? 0,
       },
-      inventoryByStatus: inventoryRows,
-      ordersByStatus: orderRows,
-      recentOrders: recentOrders.map((record) => this.serializeRecord(this.getConfig('orders'), record)),
-      recentTickets: recentTickets.map((record) => this.serializeRecord(this.getConfig('tickets'), record)),
+      inventoryByStatus: [],
+      ordersByStatus: donHangTheoTrangThai.map((item) => ({
+        status: item.trangThai,
+        _count: { status: item._count.trangThai },
+      })),
+      paymentsByStatus: thanhToanTheoTrangThai.map((item) => ({
+        status: item.trangThai,
+        _count: { status: item._count.trangThai },
+      })),
+      recentOrders: donMoi.map((record) => this.serializeRecord(this.getConfig('don-hang'), record)),
+      recentTickets: ticketMoi.map((record) => this.serializeRecord(this.getConfig('ticket-ho-tro'), record)),
     });
   }
 
   async uploadImage(file?: UploadedImageFile) {
-    if (!file) {
-      throw new BadRequestException('Image file is required');
-    }
-
-    if (!file.mimetype.startsWith('image/')) {
-      throw new BadRequestException('Only image files are supported');
-    }
-
-    const maxSize = 5 * 1024 * 1024;
-    if (file.size > maxSize) {
-      throw new BadRequestException('Image file must be 5MB or smaller');
-    }
-
-    if (!process.env.CLOUDINARY_URL) {
-      throw new BadRequestException('CLOUDINARY_URL is not configured');
-    }
+    if (!file) throw new BadRequestException('Image file is required');
+    if (!file.mimetype.startsWith('image/')) throw new BadRequestException('Only image files are supported');
+    if (file.size > 5 * 1024 * 1024) throw new BadRequestException('Image file must be 5MB or smaller');
+    if (!process.env.CLOUDINARY_URL) throw new BadRequestException('CLOUDINARY_URL is not configured');
 
     cloudinary.config({ secure: true });
     const result = await new Promise<UploadApiResponse>((resolve, reject) => {
       const upload = cloudinary.uploader.upload_stream(
-        {
-          folder: 'ai-store',
-          resource_type: 'image',
-          use_filename: true,
-          unique_filename: true,
-        },
+        { folder: 'ai-store', resource_type: 'image', use_filename: true, unique_filename: true },
         (error, response) => {
           if (error || !response) {
             reject(error || new Error('Cloudinary upload failed'));
             return;
           }
-
           resolve(response);
         },
       );
@@ -297,17 +166,13 @@ export class AdminService {
 
   private getConfig(entityKey: string) {
     const config = ADMIN_ENTITY_MAP.get(entityKey);
-
-    if (!config) {
-      throw new BadRequestException(`Unknown entity: ${entityKey}`);
-    }
-
+    if (!config) throw new BadRequestException(`Unknown entity: ${entityKey}`);
     return config;
   }
 
   private normalizeQuery(config: AdminEntityConfig, query: AdminListQuery): Required<AdminListQuery> {
     const fields = new Set(config.fields.map((field) => field.name));
-    const sortBy = query.sortBy && fields.has(query.sortBy) ? query.sortBy : config.defaultSort || 'createdAt';
+    const sortBy = query.sortBy && fields.has(query.sortBy) ? query.sortBy : config.defaultSort || 'taoLuc';
 
     return {
       page: Math.max(Number(query.page || 1), 1),
@@ -326,8 +191,7 @@ export class AdminService {
   ) {
     const data: Record<string, unknown> = {};
     const writableFields = config.fields.filter((field) => {
-      if (field.virtual) return false;
-      if (field.readonly || field.hidden) return false;
+      if (field.virtual || field.readonly || field.hidden) return false;
       if (mode === 'create' && field.create === false) return false;
       if (mode === 'update' && field.update === false) return false;
       return true;
@@ -335,9 +199,7 @@ export class AdminService {
 
     for (const field of writableFields) {
       if (!(field.name in payload)) {
-        if (mode === 'create' && field.required) {
-          throw new BadRequestException(`${field.label} is required`);
-        }
+        if (mode === 'create' && field.required) throw new BadRequestException(`${field.label} is required`);
         continue;
       }
 
@@ -356,6 +218,7 @@ export class AdminService {
         return Number(value);
       case 'enum':
       case 'relation':
+      case 'uuid':
         return String(value);
       case 'bigint':
         return BigInt(String(value));
@@ -380,11 +243,7 @@ export class AdminService {
 
   private serializeRecord(config: AdminEntityConfig, record: unknown) {
     const serialized = this.serialize(record) as Record<string, unknown>;
-
-    serialized.__recordId = config.compositeIdFields?.length
-      ? config.compositeIdFields.map((field) => serialized[field]).join(':')
-      : serialized[config.idField || 'id'];
-
+    serialized.__recordId = serialized[config.idField || 'id'];
     return serialized;
   }
 
@@ -394,17 +253,9 @@ export class AdminService {
     if (value instanceof Prisma.Decimal) return value.toString();
     if (Array.isArray(value)) return value.map((item) => this.serialize(item));
     if (value && typeof value === 'object') {
-      return Object.fromEntries(
-        Object.entries(value).map(([key, item]) => [key, this.serialize(item)]),
-      );
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, this.serialize(item)]));
     }
     return value;
-  }
-
-  private startOfToday() {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    return now;
   }
 
   private async getRelationOptions(field: AdminFieldConfig) {
@@ -415,8 +266,8 @@ export class AdminService {
     const valueField = field.relation.valueField || 'id';
     const labelField = field.relation.labelField;
     const records = await delegate.findMany({
-      where: config.softDelete ? { isDeleted: false } : undefined,
-      take: 200,
+      where: config.softDelete ? { daXoa: false } : undefined,
+      take: 300,
       orderBy: this.getRelationOrderBy(config, labelField),
     });
 
@@ -429,173 +280,22 @@ export class AdminService {
   private getRelationOrderBy(config: AdminEntityConfig, labelField: string) {
     const hasLabelField = config.fields.some((field) => field.name === labelField);
     if (hasLabelField) return { [labelField]: 'asc' };
-    return { [config.defaultSort || 'createdAt']: 'desc' };
+    return { [config.defaultSort || 'taoLuc']: 'desc' };
   }
 
   private getRelationLabel(record: Record<string, unknown>, labelField: string) {
-    const primary = record[labelField];
-    const fallback =
-      record.name ||
-      record.email ||
-      record.username ||
-      record.fullName ||
-      record.orderNo ||
-      record.code ||
-      record.id;
-
-    return String(primary || fallback || '-');
-  }
-
-  private async getUserRoleId(userId: string) {
-    const userRole = await this.prisma.userRole.findFirst({
-      where: { userId, isDeleted: false },
-      orderBy: { updatedAt: 'desc' },
-    });
-
-    return userRole?.roleId || null;
-  }
-
-  private async assignUserRole(userId: string, roleId: string | null) {
-    await this.prisma.userRole.updateMany({
-      where: roleId ? { userId, roleId: { not: roleId } } : { userId },
-      data: { isDeleted: true },
-    });
-
-    if (!roleId) return;
-
-    const existing = await this.prisma.userRole.findFirst({
-      where: { userId, roleId },
-    });
-
-    if (existing) {
-      await this.prisma.userRole.update({
-        where: { id: existing.id },
-        data: { isDeleted: false },
-      });
-      return;
-    }
-
-    await this.prisma.userRole.create({
-      data: { userId, roleId },
-    });
-  }
-
-  private encryptInventoryPassword(entityKey: string, data: Record<string, unknown>) {
-    if (entityKey !== 'inventories') return;
-    if (typeof data.encryptedPassword === 'string') {
-      data.encryptedPassword = this.inventoryPasswordService.encrypt(data.encryptedPassword);
-    }
-    this.encryptInviteLinkMetadata(data);
-  }
-
-  private decryptInventoryPassword(entityKey: string, record: Record<string, unknown>) {
-    if (entityKey !== 'inventories' || typeof record.encryptedPassword !== 'string') return;
-    record.encryptedPassword = this.inventoryPasswordService.decrypt(record.encryptedPassword);
-  }
-
-  private encryptInviteLinkMetadata(data: Record<string, unknown>) {
-    if (!data.metadata || typeof data.metadata !== 'object' || Array.isArray(data.metadata)) return;
-
-    const metadata = { ...(data.metadata as Record<string, unknown>) };
-    const inviteLink = typeof metadata.inviteLink === 'string' ? metadata.inviteLink.trim() : '';
-    const encryptedInviteLink =
-      typeof metadata.encryptedInviteLink === 'string' ? metadata.encryptedInviteLink.trim() : '';
-
-    if (inviteLink) {
-      metadata.encryptedInviteLink = this.inventoryPasswordService.encrypt(inviteLink);
-      delete metadata.inviteLink;
-    } else if (encryptedInviteLink) {
-      metadata.encryptedInviteLink = this.inventoryPasswordService.encrypt(encryptedInviteLink);
-    }
-
-    if (metadata.inventoryType === 'INVITE_LINK') {
-      metadata.usedSlots = Number(metadata.usedSlots || 0);
-      metadata.reservedSlots = Array.isArray(metadata.reservedSlots) ? metadata.reservedSlots : [];
-    }
-
-    data.metadata = metadata;
-  }
-
-  private normalizeCouponPayload(entityKey: string, data: Record<string, unknown>) {
-    if (entityKey !== 'coupons') return;
-    if (typeof data.code === 'string') {
-      data.code = data.code.trim().toUpperCase();
-    }
-  }
-
-  private toInputJsonValue(value: unknown) {
-    return (value === undefined ? {} : value) as Prisma.InputJsonValue;
-  }
-
-  private async auditCouponChange(
-    entityKey: string,
-    action: AuditAction,
-    oldData: unknown,
-    newData: unknown,
-  ) {
-    if (entityKey !== 'coupons') return;
-
-    const entityId = String((newData as Record<string, unknown>)?.id || (oldData as Record<string, unknown>)?.id || '');
-    await this.prisma.auditLog.create({
-      data: {
-        entityName: 'coupon',
-        entityId: entityId || null,
-        action,
-        oldData: oldData ? (this.serialize(oldData) as Prisma.InputJsonValue) : undefined,
-        newData: newData ? (this.serialize(newData) as Prisma.InputJsonValue) : undefined,
-      },
-    });
-  }
-
-  private async announceCreatedEntity(entityKey: string, record: unknown) {
-    const id = String((record as Record<string, unknown>).id || '');
-    if (!id) return;
-
-    if (entityKey === 'categories') {
-      await this.notificationsService.announceCategoryAdded(id);
-      return;
-    }
-
-    if (entityKey === 'products') {
-      await this.notificationsService.announceProductAdded(id);
-      return;
-    }
-
-    if (entityKey === 'inventories') {
-      await this.notificationsService.announceInventoryRestocked(id, 1);
-      return;
-    }
-
-    if (entityKey === 'coupons') {
-      await this.notificationsService.announceCouponCreated(id);
-    }
-  }
-
-  private async announceTicketStatusChanged(
-    entityKey: string,
-    previousRecord: unknown,
-    record: unknown,
-    closeReason?: string,
-  ) {
-    if (entityKey !== 'tickets' || !previousRecord || !record) return;
-
-    const previousStatus = String((previousRecord as Record<string, unknown>).status || '');
-    const nextStatus = String((record as Record<string, unknown>).status || '');
-    const id = String((record as Record<string, unknown>).id || '');
-    const notifyStatuses = ['IN_PROGRESS', 'RESOLVED', 'CLOSED'];
-
-    if (!id || previousStatus === nextStatus || !notifyStatuses.includes(nextStatus)) return;
-
-    await this.notificationsService.notifyTicketStatusChanged(
-      id,
-      nextStatus as TicketStatus,
-      closeReason,
+    return String(
+      record[labelField] ||
+        record.tenGoi ||
+        record.tenSanPham ||
+        record.tenLoai ||
+        record.tenHienThi ||
+        record.hoTen ||
+        record.username ||
+        record.maDonHang ||
+        record.ma ||
+        record.id ||
+        '-',
     );
-  }
-
-  private async invalidateCategoryCache(entityKey: string) {
-    if (entityKey === 'categories' || entityKey === 'products') {
-      await this.redisService.client.del('ai-store:active-categories');
-    }
   }
 }

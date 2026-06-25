@@ -7,681 +7,659 @@ datasource db {
   provider = "postgresql"
 }
 
-enum UserStatus {
-  INACTIVE
-  ACTIVE
-  LOCKED
+enum TrangThaiNguoiDung {
+  CHUA_KICH_HOAT
+  DANG_HOAT_DONG
+  BI_KHOA
 }
 
-enum RoleName {
+enum VaiTroHeThong {
   SUPER_ADMIN
   ADMIN
-  SUPPORT
-  CUSTOMER
+  HO_TRO
+  KHACH_HANG
+  NHA_CUNG_CAP
 }
 
-enum InventoryStatus {
-  AVAILABLE
-  RESERVED
-  SOLD
-  LOCKED
+enum TrangThaiChung {
+  DANG_HOAT_DONG
+  TAM_TAT
+  DA_XOA
 }
 
-enum DeliveryMethod {
-  ACCOUNT
-  EMAIL_INVITE
-  LINK_INVITE
-  LICENSE_KEY
-  API_KEY
-  VOUCHER_CODE
-  MANUAL
+enum KieuPhuongThucGiaoHang {
+  GUI_LINK
+  FORM_DOI_TAC
+  GUI_EMAIL_CHO_DOI_TAC
+  NHAP_TAY
 }
 
-enum OrderStatus {
-  PENDING_PAYMENT
-  PAID
-  WAITING_SUPPLIER
-  FULFILLING
-  DELIVERED
-  COMPLETED
-  CANCELLED
+enum TrangThaiTaiNguyen {
+  SAN_SANG
+  DA_GIU
+  DA_BAN
+  BI_KHOA
 }
 
-enum PaymentStatus {
-  PENDING
-  PAID
-  FAILED
-  REFUNDED
+enum TrangThaiDonHang {
+  CHO_THANH_TOAN
+  DA_THANH_TOAN
+  CHO_NHA_CUNG_CAP
+  DANG_XU_LY
+  DA_GIAO
+  HOAN_THANH
+  DA_HUY
 }
 
-enum DeliveryStatus {
-  PENDING
-  DELIVERED
-  FAILED
+enum TrangThaiThanhToan {
+  CHO_THANH_TOAN
+  DA_THANH_TOAN
+  THAT_BAI
+  DA_HOAN_TIEN
 }
 
-enum FulfillmentStatus {
-  PENDING
-  PROCESSING
-  DELIVERED
-  FAILED
+enum NhaCungCapTrangThai {
+  CHO_KET_NOI
+  DANG_HOAT_DONG
+  TAM_KHOA
+  NGUNG_HOP_TAC
 }
 
-enum SupplierRequestStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  CANCELLED
+enum TrangThaiLienKetNhaCungCap {
+  CHUA_SU_DUNG
+  DA_SU_DUNG
+  HET_HAN
+  DA_THU_HOI
 }
 
-enum TicketStatus {
-  OPEN
-  IN_PROGRESS
-  RESOLVED
-  CLOSED
+enum TrangThaiYeuCauNhaCungCap {
+  CHO_NHAN
+  DA_NHAN
+  DANG_XU_LY
+  DA_TRA_KET_QUA
+  THAT_BAI
+  DA_HUY
 }
 
-enum NotificationType {
-  SYSTEM
-  ORDER
-  PAYMENT
-  DELIVERY
-  SUPPORT
+enum TrangThaiGiaoHang {
+  CHO_GIAO
+  DA_GIAO
+  THAT_BAI
 }
 
-enum AuditAction {
-  CREATE
-  UPDATE
-  DELETE
-  LOGIN
-  LOGOUT
-  PAYMENT_WEBHOOK
-  DELIVERY_SENT
-  COUPON_CREATE
-  COUPON_UPDATE
-  COUPON_DELETE
-  COUPON_DISABLE
-  REVIEW_HIDE
-  REVIEW_SHOW
+enum LoaiNguonGiaoHang {
+  KHO_NOI_BO
+  NHA_CUNG_CAP
+  ADMIN_NHAP_TAY
 }
 
-enum PaymentProvider {
-  BANKING_QR
-  MOMO
-  ZALOPAY
-  VNPAY
+enum TrangThaiTicket {
+  MOI
+  DANG_XU_LY
+  DA_GIAI_QUYET
+  DA_DONG
 }
 
-enum DiscountType {
-  PERCENT
-  FIXED
+enum LoaiThongBao {
+  HE_THONG
+  DON_HANG
+  THANH_TOAN
+  GIAO_HANG
+  HO_TRO
+  NHA_CUNG_CAP
 }
 
-enum AdminLoginTokenStatus {
-  PENDING
-  USED
-  EXPIRED
-  REVOKED
+enum LoaiGiamGia {
+  PHAN_TRAM
+  SO_TIEN
 }
 
-enum ActivityLogType {
-  COUPON_APPLIED
-  REVIEW_CREATED
-  REVIEW_UPDATED
+enum LoaiAudit {
+  TAO
+  CAP_NHAT
+  XOA
+  DANG_NHAP
+  DANG_XUAT
+  THANH_TOAN_WEBHOOK
+  GIAO_HANG
+  SUPPLIER_ONBOARD
+  SUPPLIER_TRA_KET_QUA
+  MA_GIAM_GIA
 }
 
-model User {
-  id                  String            @id @default(uuid()) @db.Uuid
-  telegramId          BigInt?           @unique @map("telegram_id") @db.BigInt
-  username            String?           @db.VarChar(100)
-  fullName            String?           @map("full_name") @db.VarChar(255)
-  phone               String?           @db.VarChar(20)
-  email               String?           @db.VarChar(255)
-  status              UserStatus        @default(ACTIVE)
-  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted           Boolean           @default(false) @map("is_deleted")
-  roles               UserRole[]
-  reservedInventories Inventory[]       @relation("InventoryReservedBy")
-  orders              Order[]
-  tickets             Ticket[]
-  notifications       Notification[]
-  refreshTokens       RefreshToken[]
-  auditLogs           AuditLog[]        @relation("AuditActor")
-  adminLoginTokens    AdminLoginToken[]
-  couponsCreated      Coupon[]
-  couponUsers         CouponUser[]
-  couponUsages        CouponUsage[]
-  reviews             Review[]
-  activityLogs        ActivityLog[]
-
-  @@index([telegramId], map: "idx_users_telegram")
-  @@index([status], map: "idx_users_status")
-  @@index([createdAt(sort: Desc)], map: "idx_users_created_at")
-  @@map("users")
+enum NhaCungCapKenhNhanViec {
+  TELEGRAM_BOT
+  TELEGRAM_MINI_APP
+  LINK_FORM
+  THU_CONG
 }
 
-model Role {
-  id        String     @id @default(uuid()) @db.Uuid
-  name      RoleName   @unique
-  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted Boolean    @default(false) @map("is_deleted")
-  users     UserRole[]
+model NguoiDung {
+  id                 String               @id @default(uuid()) @db.Uuid
+  telegramId         BigInt?              @unique @map("telegram_id") @db.BigInt
+  username           String?              @db.VarChar(100)
+  hoTen              String?              @map("ho_ten") @db.VarChar(255)
+  soDienThoai        String?              @map("so_dien_thoai") @db.VarChar(20)
+  email              String?              @db.VarChar(255)
+  trangThai          TrangThaiNguoiDung   @default(DANG_HOAT_DONG) @map("trang_thai")
+  taoLuc             DateTime             @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc         DateTime             @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa              Boolean              @default(false) @map("da_xoa")
+  vaiTro             NguoiDungVaiTro[]
+  donHang            DonHang[]
+  thongBao           ThongBao[]
+  ticket             TicketHoTro[]
+  danhGia            DanhGia[]
+  maGiamGiaDuocGan   MaGiamGiaNguoiDung[]
+  luotDungMaGiamGia  LuotDungMaGiamGia[]
+  auditLogs          AuditLog[]           @relation("AuditNguoiThucHien")
+  tokenDangNhapAdmin TokenDangNhapAdmin[]
+  nhaCungCap         NhaCungCap?
 
-  @@map("roles")
+  @@index([telegramId], map: "idx_nguoi_dung_telegram")
+  @@index([trangThai], map: "idx_nguoi_dung_trang_thai")
+  @@map("nguoi_dung")
 }
 
-model Category {
-  id        String    @id @default(uuid()) @db.Uuid
-  name      String    @db.VarChar(255)
-  icon      String?   @db.VarChar(255)
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted Boolean   @default(false) @map("is_deleted")
-  products  Product[]
+model VaiTro {
+  id         String            @id @default(uuid()) @db.Uuid
+  ten        VaiTroHeThong     @unique @map("ten")
+  taoLuc     DateTime          @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc DateTime          @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa      Boolean           @default(false) @map("da_xoa")
+  nguoiDung  NguoiDungVaiTro[]
 
-  @@index([name], map: "idx_categories_name")
-  @@index([isDeleted], map: "idx_categories_deleted")
-  @@map("categories")
+  @@map("vai_tro")
 }
 
-model UserRole {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  roleId    String   @map("role_id") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted Boolean  @default(false) @map("is_deleted")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+model NguoiDungVaiTro {
+  id          String    @id @default(uuid()) @db.Uuid
+  nguoiDungId String    @map("nguoi_dung_id") @db.Uuid
+  vaiTroId    String    @map("vai_tro_id") @db.Uuid
+  taoLuc      DateTime  @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc  DateTime  @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa       Boolean   @default(false) @map("da_xoa")
+  nguoiDung   NguoiDung @relation(fields: [nguoiDungId], references: [id], onDelete: Cascade)
+  vaiTro      VaiTro    @relation(fields: [vaiTroId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, roleId], map: "uq_user_roles_user_role")
-  @@index([roleId], map: "idx_user_roles_role")
-  @@map("user_roles")
+  @@unique([nguoiDungId, vaiTroId], map: "uq_nguoi_dung_vai_tro")
+  @@map("nguoi_dung_vai_tro")
 }
 
-model Product {
-  id          String           @id @default(uuid()) @db.Uuid
-  code        String           @unique @db.VarChar(50)
-  name        String           @db.VarChar(255)
-  description String?
-  categoryId  String?          @map("category_id") @db.Uuid
-  imageUrl    String?          @map("image_url") @db.VarChar(500)
-  isActive    Boolean          @default(true) @map("is_active")
-  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted   Boolean          @default(false) @map("is_deleted")
-  categoryRef Category?        @relation(fields: [categoryId], references: [id])
-  variants    ProductVariant[]
+model LoaiSanPham {
+  id         String         @id @default(uuid()) @db.Uuid
+  maLoai     String         @unique @map("ma_loai") @db.VarChar(80)
+  tenLoai    String         @map("ten_loai") @db.VarChar(255)
+  moTa       String?        @map("mo_ta")
+  icon       String?        @db.VarChar(255)
+  thuTu      Int            @default(0) @map("thu_tu")
+  trangThai  TrangThaiChung @default(DANG_HOAT_DONG) @map("trang_thai")
+  taoLuc     DateTime       @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc DateTime       @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa      Boolean        @default(false) @map("da_xoa")
+  sanPham    SanPham[]
 
-  @@index([categoryId], map: "idx_products_category_id")
-  @@index([isActive, isDeleted], map: "idx_products_active_deleted")
-  @@index([createdAt(sort: Desc)], map: "idx_products_created_at")
-  @@map("products")
+  @@index([trangThai, daXoa], map: "idx_loai_san_pham_trang_thai")
+  @@map("loai_san_pham")
 }
 
-model ProductVariant {
-  id             String          @id @default(uuid()) @db.Uuid
-  productId      String          @map("product_id") @db.Uuid
-  name           String          @db.VarChar(255)
-  durationDays   Int?            @map("duration_days")
-  sellPrice      Decimal         @map("sell_price") @db.Decimal(18, 2)
-  deliveryMethod DeliveryMethod  @default(ACCOUNT) @map("delivery_method")
-  displayStock   Int             @default(0) @map("display_stock")
-  warrantyDays   Int?            @map("warranty_days")
-  active         Boolean         @default(true)
-  averageRating  Decimal         @default(0) @map("average_rating") @db.Decimal(3, 2)
-  reviewCount    Int             @default(0) @map("review_count")
-  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted      Boolean         @default(false) @map("is_deleted")
-  product        Product         @relation(fields: [productId], references: [id])
-  inventories    Inventory[]
-  supplierVariants SupplierVariant[]
-  orderItems     OrderItem[]
-  couponProducts CouponProduct[]
-  reviews        Review[]
+model SanPham {
+  id         String         @id @default(uuid()) @db.Uuid
+  loaiId     String         @map("loai_id") @db.Uuid
+  maSanPham  String         @unique @map("ma_san_pham") @db.VarChar(80)
+  tenSanPham String         @map("ten_san_pham") @db.VarChar(255)
+  moTa       String?        @map("mo_ta")
+  anhDaiDien String?        @map("anh_dai_dien") @db.VarChar(500)
+  thuTu      Int            @default(0) @map("thu_tu")
+  trangThai  TrangThaiChung @default(DANG_HOAT_DONG) @map("trang_thai")
+  taoLuc     DateTime       @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc DateTime       @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa      Boolean        @default(false) @map("da_xoa")
+  loai       LoaiSanPham    @relation(fields: [loaiId], references: [id])
+  goiDichVu  GoiDichVu[]
 
-  @@index([productId], map: "idx_product_variants_product")
-  @@index([active, isDeleted], map: "idx_product_variants_active_deleted")
-  @@map("product_variants")
+  @@index([loaiId], map: "idx_san_pham_loai")
+  @@index([trangThai, daXoa], map: "idx_san_pham_trang_thai")
+  @@map("san_pham")
 }
 
-model Supplier {
-  id                 String            @id @default(uuid()) @db.Uuid
-  name               String            @db.VarChar(255)
-  email              String?           @db.VarChar(255)
-  telegram           String?           @db.VarChar(100)
-  zalo               String?           @db.VarChar(50)
-  active             Boolean           @default(true)
-  avgDeliveryMinutes Int?              @map("avg_delivery_minutes")
-  successRate        Decimal?          @map("success_rate") @db.Decimal(5, 2)
-  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  variants           SupplierVariant[]
-  requests           SupplierRequest[]
+model GoiDichVu {
+  id              String                  @id @default(uuid()) @db.Uuid
+  sanPhamId       String                  @map("san_pham_id") @db.Uuid
+  maGoi           String                  @unique @map("ma_goi") @db.VarChar(100)
+  tenGoi          String                  @map("ten_goi") @db.VarChar(255)
+  moTa            String?                 @map("mo_ta")
+  thoiHanNgay     Int?                    @map("thoi_han_ngay")
+  baoHanhNgay     Int?                    @map("bao_hanh_ngay")
+  giaBan          Decimal                 @map("gia_ban") @db.Decimal(18, 2)
+  giaVonDuKien    Decimal?                @map("gia_von_du_kien") @db.Decimal(18, 2)
+  tonHienThi      Int                     @default(0) @map("ton_hien_thi")
+  choPhepMua      Boolean                 @default(true) @map("cho_phep_mua")
+  thuTu           Int                     @default(0) @map("thu_tu")
+  trangThai       TrangThaiChung          @default(DANG_HOAT_DONG) @map("trang_thai")
+  taoLuc          DateTime                @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc      DateTime                @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa           Boolean                 @default(false) @map("da_xoa")
+  sanPham         SanPham                 @relation(fields: [sanPhamId], references: [id])
+  phuongThuc      GoiPhuongThucGiaoHang[]
+  taiNguyen       TaiNguyenGiaoHang[]
+  nhaCungCapGoi   NhaCungCapGoiDichVu[]
+  chiTietDonHang  ChiTietDonHang[]
+  maGiamGiaApDung MaGiamGiaGoiDichVu[]
+  danhGia         DanhGia[]
 
-  @@index([active], map: "idx_suppliers_active")
-  @@map("suppliers")
+  @@index([sanPhamId], map: "idx_goi_dich_vu_san_pham")
+  @@index([choPhepMua, trangThai, daXoa], map: "idx_goi_dich_vu_mua")
+  @@map("goi_dich_vu")
 }
 
-model SupplierVariant {
-  id                String         @id @default(uuid()) @db.Uuid
-  supplierId        String         @map("supplier_id") @db.Uuid
-  variantId         String         @map("variant_id") @db.Uuid
-  costPrice         Decimal        @map("cost_price") @db.Decimal(18, 2)
-  availableQuantity Int            @default(0) @map("available_quantity")
-  reservedQuantity  Int            @default(0) @map("reserved_quantity")
-  soldQuantity      Int            @default(0) @map("sold_quantity")
-  active            Boolean        @default(true)
-  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  supplier          Supplier       @relation(fields: [supplierId], references: [id])
-  variant           ProductVariant @relation(fields: [variantId], references: [id])
+model PhuongThucGiaoHang {
+  id             String                  @id @default(uuid()) @db.Uuid
+  maPhuongThuc   String                  @unique @map("ma_phuong_thuc") @db.VarChar(80)
+  tenPhuongThuc  String                  @map("ten_phuong_thuc") @db.VarChar(255)
+  kieu           KieuPhuongThucGiaoHang  @map("kieu")
+  moTa           String?                 @map("mo_ta")
+  cauHinhMacDinh Json?                   @map("cau_hinh_mac_dinh")
+  trangThai      TrangThaiChung          @default(DANG_HOAT_DONG) @map("trang_thai")
+  taoLuc         DateTime                @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc     DateTime                @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa          Boolean                 @default(false) @map("da_xoa")
+  goiDichVu      GoiPhuongThucGiaoHang[]
 
-  @@unique([supplierId, variantId], map: "uq_supplier_variants_supplier_variant")
-  @@index([variantId], map: "idx_supplier_variants_variant")
-  @@index([active], map: "idx_supplier_variants_active")
-  @@map("supplier_variants")
+  @@index([kieu], map: "idx_phuong_thuc_giao_hang_kieu")
+  @@map("phuong_thuc_giao_hang")
 }
 
-model SupplierRequest {
-  id          String                @id @default(uuid()) @db.Uuid
-  orderId     String                @map("order_id") @db.Uuid
-  supplierId  String                @map("supplier_id") @db.Uuid
-  status      SupplierRequestStatus @default(PENDING)
-  note        String?
-  requestedAt DateTime              @default(now()) @map("requested_at") @db.Timestamptz(6)
-  fulfilledAt DateTime?             @map("fulfilled_at") @db.Timestamptz(6)
-  createdAt   DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  order       Order                 @relation(fields: [orderId], references: [id])
-  supplier    Supplier              @relation(fields: [supplierId], references: [id])
-  items       SupplierRequestItem[]
+model GoiPhuongThucGiaoHang {
+  id                String                @id @default(uuid()) @db.Uuid
+  goiDichVuId       String                @map("goi_dich_vu_id") @db.Uuid
+  phuongThucId      String                @map("phuong_thuc_id") @db.Uuid
+  uuTien            Int                   @default(0) @map("uu_tien")
+  laMacDinh         Boolean               @default(false) @map("la_mac_dinh")
+  tuDongGanSupplier Boolean               @default(false) @map("tu_dong_gan_supplier")
+  cauHinh           Json?                 @map("cau_hinh")
+  trangThai         TrangThaiChung        @default(DANG_HOAT_DONG) @map("trang_thai")
+  taoLuc            DateTime              @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc        DateTime              @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa             Boolean               @default(false) @map("da_xoa")
+  goiDichVu         GoiDichVu             @relation(fields: [goiDichVuId], references: [id], onDelete: Cascade)
+  phuongThuc        PhuongThucGiaoHang    @relation(fields: [phuongThucId], references: [id])
+  taiNguyen         TaiNguyenGiaoHang[]
+  nhaCungCapGoi     NhaCungCapGoiDichVu[]
+  chiTietDonHang    ChiTietDonHang[]
 
-  @@index([orderId], map: "idx_supplier_requests_order")
-  @@index([supplierId], map: "idx_supplier_requests_supplier")
-  @@index([status], map: "idx_supplier_requests_status")
-  @@map("supplier_requests")
+  @@unique([goiDichVuId, phuongThucId], map: "uq_goi_phuong_thuc")
+  @@index([goiDichVuId, laMacDinh], map: "idx_goi_phuong_thuc_mac_dinh")
+  @@map("goi_phuong_thuc_giao_hang")
 }
 
-model SupplierRequestItem {
+model NhaCungCap {
+  id               String                 @id @default(uuid()) @db.Uuid
+  nguoiDungId      String?                @unique @map("nguoi_dung_id") @db.Uuid
+  telegramId       BigInt?                @unique @map("telegram_id") @db.BigInt
+  usernameTelegram String?                @map("username_telegram") @db.VarChar(100)
+  tenHienThi       String                 @map("ten_hien_thi") @db.VarChar(255)
+  soDienThoai      String?                @map("so_dien_thoai") @db.VarChar(20)
+  email            String?                @db.VarChar(255)
+  ghiChu           String?                @map("ghi_chu")
+  kenhNhanViec     NhaCungCapKenhNhanViec @default(TELEGRAM_BOT) @map("kenh_nhan_viec")
+  trangThai        NhaCungCapTrangThai    @default(CHO_KET_NOI) @map("trang_thai")
+  taoLuc           DateTime               @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc       DateTime               @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa            Boolean                @default(false) @map("da_xoa")
+  nguoiDung        NguoiDung?             @relation(fields: [nguoiDungId], references: [id])
+  lienKetMoi       LienKetNhaCungCap[]
+  goiDichVu        NhaCungCapGoiDichVu[]
+  yeuCau           YeuCauNhaCungCap[]
+
+  @@index([telegramId], map: "idx_nha_cung_cap_telegram")
+  @@index([trangThai], map: "idx_nha_cung_cap_trang_thai")
+  @@map("nha_cung_cap")
+}
+
+model LienKetNhaCungCap {
+  id              String                     @id @default(uuid()) @db.Uuid
+  nhaCungCapId    String?                    @map("nha_cung_cap_id") @db.Uuid
+  maToken         String                     @unique @map("ma_token") @db.VarChar(120)
+  tenMoi          String?                    @map("ten_moi") @db.VarChar(255)
+  ghiChu          String?                    @map("ghi_chu")
+  telegramIdDaGan BigInt?                    @map("telegram_id_da_gan") @db.BigInt
+  hetHanLuc       DateTime?                  @map("het_han_luc") @db.Timestamptz(6)
+  dungLuc         DateTime?                  @map("dung_luc") @db.Timestamptz(6)
+  trangThai       TrangThaiLienKetNhaCungCap @default(CHUA_SU_DUNG) @map("trang_thai")
+  taoLuc          DateTime                   @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc      DateTime                   @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  nhaCungCap      NhaCungCap?                @relation(fields: [nhaCungCapId], references: [id])
+
+  @@index([trangThai, hetHanLuc], map: "idx_lien_ket_ncc_trang_thai")
+  @@map("lien_ket_nha_cung_cap")
+}
+
+model NhaCungCapGoiDichVu {
+  id               String                @id @default(uuid()) @db.Uuid
+  nhaCungCapId     String                @map("nha_cung_cap_id") @db.Uuid
+  goiDichVuId      String                @map("goi_dich_vu_id") @db.Uuid
+  goiPhuongThucId  String                @map("goi_phuong_thuc_id") @db.Uuid
+  giaVon           Decimal?              @map("gia_von") @db.Decimal(18, 2)
+  soLuongCoTheNhan Int?                  @map("so_luong_co_the_nhan")
+  soLuongDangGiu   Int                   @default(0) @map("so_luong_dang_giu")
+  thoiGianXuLyPhut Int?                  @map("thoi_gian_xu_ly_phut")
+  tyLeThanhCong    Decimal?              @map("ty_le_thanh_cong") @db.Decimal(5, 2)
+  uuTien           Int                   @default(0) @map("uu_tien")
+  cauHinh          Json?                 @map("cau_hinh")
+  trangThai        TrangThaiChung        @default(DANG_HOAT_DONG) @map("trang_thai")
+  taoLuc           DateTime              @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc       DateTime              @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa            Boolean               @default(false) @map("da_xoa")
+  nhaCungCap       NhaCungCap            @relation(fields: [nhaCungCapId], references: [id])
+  goiDichVu        GoiDichVu             @relation(fields: [goiDichVuId], references: [id])
+  goiPhuongThuc    GoiPhuongThucGiaoHang @relation(fields: [goiPhuongThucId], references: [id])
+
+  @@unique([nhaCungCapId, goiDichVuId, goiPhuongThucId], map: "uq_ncc_goi_phuong_thuc")
+  @@index([goiDichVuId, trangThai], map: "idx_ncc_goi_dich_vu")
+  @@map("nha_cung_cap_goi_dich_vu")
+}
+
+model TaiNguyenGiaoHang {
+  id                String                @id @default(uuid()) @db.Uuid
+  goiDichVuId       String                @map("goi_dich_vu_id") @db.Uuid
+  goiPhuongThucId   String                @map("goi_phuong_thuc_id") @db.Uuid
+  maTaiNguyen       String?               @map("ma_tai_nguyen") @db.VarChar(120)
+  duLieuMaHoa       String?               @map("du_lieu_ma_hoa")
+  duLieuCongKhai    Json?                 @map("du_lieu_cong_khai")
+  soLanDungToiDa    Int?                  @map("so_lan_dung_toi_da")
+  soLanDaDung       Int                   @default(0) @map("so_lan_da_dung")
+  giuChoDonHangId   String?               @map("giu_cho_don_hang_id") @db.Uuid
+  giuChoNguoiDungId String?               @map("giu_cho_nguoi_dung_id") @db.Uuid
+  giuDenLuc         DateTime?             @map("giu_den_luc") @db.Timestamptz(6)
+  banLuc            DateTime?             @map("ban_luc") @db.Timestamptz(6)
+  trangThai         TrangThaiTaiNguyen    @default(SAN_SANG) @map("trang_thai")
+  taoLuc            DateTime              @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc        DateTime              @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa             Boolean               @default(false) @map("da_xoa")
+  goiDichVu         GoiDichVu             @relation(fields: [goiDichVuId], references: [id])
+  goiPhuongThuc     GoiPhuongThucGiaoHang @relation(fields: [goiPhuongThucId], references: [id])
+  giaoHang          GiaoHang[]
+
+  @@index([goiDichVuId, trangThai], map: "idx_tai_nguyen_goi_trang_thai")
+  @@index([giuChoDonHangId], map: "idx_tai_nguyen_don_giu")
+  @@map("tai_nguyen_giao_hang")
+}
+
+model DonHang {
+  id                 String              @id @default(uuid()) @db.Uuid
+  maDonHang          String              @unique @map("ma_don_hang") @db.VarChar(60)
+  nguoiDungId        String              @map("nguoi_dung_id") @db.Uuid
+  tamTinh            Decimal             @default(0) @map("tam_tinh") @db.Decimal(18, 2)
+  giamGia            Decimal             @default(0) @map("giam_gia") @db.Decimal(18, 2)
+  tongTien           Decimal             @default(0) @map("tong_tien") @db.Decimal(18, 2)
+  maGiamGiaId        String?             @map("ma_giam_gia_id") @db.Uuid
+  trangThai          TrangThaiDonHang    @default(CHO_THANH_TOAN) @map("trang_thai")
+  trangThaiThanhToan TrangThaiThanhToan  @default(CHO_THANH_TOAN) @map("trang_thai_thanh_toan")
+  taoLuc             DateTime            @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc         DateTime            @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa              Boolean             @default(false) @map("da_xoa")
+  nguoiDung          NguoiDung           @relation(fields: [nguoiDungId], references: [id])
+  maGiamGia          MaGiamGia?          @relation(fields: [maGiamGiaId], references: [id])
+  chiTiet            ChiTietDonHang[]
+  thanhToan          ThanhToan[]
+  ticket             TicketHoTro[]
+  danhGia            DanhGia[]
+  luotDungMaGiamGia  LuotDungMaGiamGia[]
+
+  @@index([nguoiDungId], map: "idx_don_hang_nguoi_dung")
+  @@index([trangThai], map: "idx_don_hang_trang_thai")
+  @@index([trangThaiThanhToan], map: "idx_don_hang_thanh_toan")
+  @@map("don_hang")
+}
+
+model ChiTietDonHang {
+  id               String                @id @default(uuid()) @db.Uuid
+  donHangId        String                @map("don_hang_id") @db.Uuid
+  goiDichVuId      String                @map("goi_dich_vu_id") @db.Uuid
+  goiPhuongThucId  String                @map("goi_phuong_thuc_id") @db.Uuid
+  soLuong          Int                   @default(1) @map("so_luong")
+  donGia           Decimal               @map("don_gia") @db.Decimal(18, 2)
+  thanhTien        Decimal               @map("thanh_tien") @db.Decimal(18, 2)
+  duLieuKhachNhap  Json?                 @map("du_lieu_khach_nhap")
+  taoLuc           DateTime              @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc       DateTime              @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa            Boolean               @default(false) @map("da_xoa")
+  donHang          DonHang               @relation(fields: [donHangId], references: [id], onDelete: Cascade)
+  goiDichVu        GoiDichVu             @relation(fields: [goiDichVuId], references: [id])
+  goiPhuongThuc    GoiPhuongThucGiaoHang @relation(fields: [goiPhuongThucId], references: [id])
+  yeuCauNhaCungCap YeuCauNhaCungCap[]
+  giaoHang         GiaoHang[]
+
+  @@index([donHangId], map: "idx_chi_tiet_don_hang_don")
+  @@index([goiDichVuId], map: "idx_chi_tiet_don_hang_goi")
+  @@map("chi_tiet_don_hang")
+}
+
+model ThanhToan {
+  id                  String             @id @default(uuid()) @db.Uuid
+  donHangId           String             @map("don_hang_id") @db.Uuid
+  nhaCungCapThanhToan String             @default("PAYOS") @map("nha_cung_cap_thanh_toan") @db.VarChar(50)
+  soTien              Decimal            @map("so_tien") @db.Decimal(18, 2)
+  maGiaoDich          String?            @map("ma_giao_dich") @db.VarChar(255)
+  noiDungThanhToan    String?            @map("noi_dung_thanh_toan") @db.VarChar(255)
+  duLieuQr            Json?              @map("du_lieu_qr")
+  trangThai           TrangThaiThanhToan @default(CHO_THANH_TOAN) @map("trang_thai")
+  thanhToanLuc        DateTime?          @map("thanh_toan_luc") @db.Timestamptz(6)
+  taoLuc              DateTime           @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc          DateTime           @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa               Boolean            @default(false) @map("da_xoa")
+  donHang             DonHang            @relation(fields: [donHangId], references: [id])
+
+  @@index([donHangId], map: "idx_thanh_toan_don_hang")
+  @@index([trangThai], map: "idx_thanh_toan_trang_thai")
+  @@map("thanh_toan")
+}
+
+model YeuCauNhaCungCap {
+  id               String                    @id @default(uuid()) @db.Uuid
+  chiTietDonHangId String                    @map("chi_tiet_don_hang_id") @db.Uuid
+  nhaCungCapId     String                    @map("nha_cung_cap_id") @db.Uuid
+  maYeuCau         String                    @unique @map("ma_yeu_cau") @db.VarChar(80)
+  soLuong          Int                       @default(1) @map("so_luong")
+  duLieuGui        Json?                     @map("du_lieu_gui")
+  duLieuPhanHoi    Json?                     @map("du_lieu_phan_hoi")
+  tokenForm        String?                   @unique @map("token_form") @db.VarChar(120)
+  guiLuc           DateTime?                 @map("gui_luc") @db.Timestamptz(6)
+  nhanLuc          DateTime?                 @map("nhan_luc") @db.Timestamptz(6)
+  traKetQuaLuc     DateTime?                 @map("tra_ket_qua_luc") @db.Timestamptz(6)
+  trangThai        TrangThaiYeuCauNhaCungCap @default(CHO_NHAN) @map("trang_thai")
+  ghiChu           String?                   @map("ghi_chu")
+  taoLuc           DateTime                  @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc       DateTime                  @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  chiTietDonHang   ChiTietDonHang            @relation(fields: [chiTietDonHangId], references: [id])
+  nhaCungCap       NhaCungCap                @relation(fields: [nhaCungCapId], references: [id])
+  giaoHang         GiaoHang[]
+
+  @@index([nhaCungCapId, trangThai], map: "idx_yeu_cau_ncc_trang_thai")
+  @@index([chiTietDonHangId], map: "idx_yeu_cau_ncc_chi_tiet")
+  @@map("yeu_cau_nha_cung_cap")
+}
+
+model GiaoHang {
+  id                 String             @id @default(uuid()) @db.Uuid
+  chiTietDonHangId   String             @map("chi_tiet_don_hang_id") @db.Uuid
+  taiNguyenId        String?            @map("tai_nguyen_id") @db.Uuid
+  yeuCauNhaCungCapId String?            @map("yeu_cau_nha_cung_cap_id") @db.Uuid
+  nguonGiaoHang      LoaiNguonGiaoHang  @map("nguon_giao_hang")
+  noiDungGiao        String?            @map("noi_dung_giao")
+  duLieuGiao         Json?              @map("du_lieu_giao")
+  metadata           Json?
+  giaoLuc            DateTime?          @map("giao_luc") @db.Timestamptz(6)
+  trangThai          TrangThaiGiaoHang  @default(CHO_GIAO) @map("trang_thai")
+  taoLuc             DateTime           @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc         DateTime           @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa              Boolean            @default(false) @map("da_xoa")
+  chiTietDonHang     ChiTietDonHang     @relation(fields: [chiTietDonHangId], references: [id])
+  taiNguyen          TaiNguyenGiaoHang? @relation(fields: [taiNguyenId], references: [id])
+  yeuCauNhaCungCap   YeuCauNhaCungCap?  @relation(fields: [yeuCauNhaCungCapId], references: [id])
+
+  @@index([chiTietDonHangId], map: "idx_giao_hang_chi_tiet")
+  @@index([trangThai], map: "idx_giao_hang_trang_thai")
+  @@map("giao_hang")
+}
+
+model MaGiamGia {
+  id              String               @id @default(uuid()) @db.Uuid
+  ma              String               @unique @db.VarChar(100)
+  ten             String               @db.VarChar(255)
+  moTa            String?              @map("mo_ta")
+  loaiGiamGia     LoaiGiamGia          @map("loai_giam_gia")
+  giaTriGiam      Decimal              @map("gia_tri_giam") @db.Decimal(18, 2)
+  giamToiDa       Decimal?             @map("giam_toi_da") @db.Decimal(18, 2)
+  donToiThieu     Decimal?             @map("don_toi_thieu") @db.Decimal(18, 2)
+  gioiHanLuotDung Int?                 @map("gioi_han_luot_dung")
+  soLuotDaDung    Int                  @default(0) @map("so_luot_da_dung")
+  batDauLuc       DateTime?            @map("bat_dau_luc") @db.Timestamptz(6)
+  ketThucLuc      DateTime?            @map("ket_thuc_luc") @db.Timestamptz(6)
+  trangThai       TrangThaiChung       @default(DANG_HOAT_DONG) @map("trang_thai")
+  taoLuc          DateTime             @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc      DateTime             @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa           Boolean              @default(false) @map("da_xoa")
+  goiDichVu       MaGiamGiaGoiDichVu[]
+  nguoiDung       MaGiamGiaNguoiDung[]
+  luotDung        LuotDungMaGiamGia[]
+  donHang         DonHang[]
+
+  @@index([ma], map: "idx_ma_giam_gia_ma")
+  @@index([trangThai], map: "idx_ma_giam_gia_trang_thai")
+  @@map("ma_giam_gia")
+}
+
+model MaGiamGiaGoiDichVu {
+  id          String    @id @default(uuid()) @db.Uuid
+  maGiamGiaId String    @map("ma_giam_gia_id") @db.Uuid
+  goiDichVuId String    @map("goi_dich_vu_id") @db.Uuid
+  taoLuc      DateTime  @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  maGiamGia   MaGiamGia @relation(fields: [maGiamGiaId], references: [id], onDelete: Cascade)
+  goiDichVu   GoiDichVu @relation(fields: [goiDichVuId], references: [id], onDelete: Cascade)
+
+  @@unique([maGiamGiaId, goiDichVuId], map: "uq_ma_giam_gia_goi")
+  @@map("ma_giam_gia_goi_dich_vu")
+}
+
+model MaGiamGiaNguoiDung {
+  id          String    @id @default(uuid()) @db.Uuid
+  maGiamGiaId String    @map("ma_giam_gia_id") @db.Uuid
+  nguoiDungId String    @map("nguoi_dung_id") @db.Uuid
+  taoLuc      DateTime  @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  maGiamGia   MaGiamGia @relation(fields: [maGiamGiaId], references: [id], onDelete: Cascade)
+  nguoiDung   NguoiDung @relation(fields: [nguoiDungId], references: [id], onDelete: Cascade)
+
+  @@unique([maGiamGiaId, nguoiDungId], map: "uq_ma_giam_gia_nguoi_dung")
+  @@index([nguoiDungId], map: "idx_ma_giam_gia_nguoi_dung")
+  @@map("ma_giam_gia_nguoi_dung")
+}
+
+model LuotDungMaGiamGia {
+  id          String    @id @default(uuid()) @db.Uuid
+  maGiamGiaId String    @map("ma_giam_gia_id") @db.Uuid
+  nguoiDungId String    @map("nguoi_dung_id") @db.Uuid
+  donHangId   String    @map("don_hang_id") @db.Uuid
+  soTienGiam  Decimal   @map("so_tien_giam") @db.Decimal(18, 2)
+  dungLuc     DateTime  @default(now()) @map("dung_luc") @db.Timestamptz(6)
+  taoLuc      DateTime  @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  maGiamGia   MaGiamGia @relation(fields: [maGiamGiaId], references: [id])
+  nguoiDung   NguoiDung @relation(fields: [nguoiDungId], references: [id])
+  donHang     DonHang   @relation(fields: [donHangId], references: [id])
+
+  @@unique([maGiamGiaId, donHangId], map: "uq_luot_dung_ma_don")
+  @@index([nguoiDungId], map: "idx_luot_dung_ma_nguoi_dung")
+  @@map("luot_dung_ma_giam_gia")
+}
+
+model DanhGia {
+  id          String    @id @default(uuid()) @db.Uuid
+  donHangId   String    @map("don_hang_id") @db.Uuid
+  nguoiDungId String    @map("nguoi_dung_id") @db.Uuid
+  goiDichVuId String    @map("goi_dich_vu_id") @db.Uuid
+  soSao       Int       @map("so_sao")
+  noiDung     String?   @map("noi_dung")
+  biAn        Boolean   @default(false) @map("bi_an")
+  taoLuc      DateTime  @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc  DateTime  @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa       Boolean   @default(false) @map("da_xoa")
+  donHang     DonHang   @relation(fields: [donHangId], references: [id])
+  nguoiDung   NguoiDung @relation(fields: [nguoiDungId], references: [id])
+  goiDichVu   GoiDichVu @relation(fields: [goiDichVuId], references: [id])
+
+  @@unique([donHangId, goiDichVuId], map: "uq_danh_gia_don_goi")
+  @@index([goiDichVuId, biAn], map: "idx_danh_gia_goi")
+  @@map("danh_gia")
+}
+
+model TicketHoTro {
   id          String          @id @default(uuid()) @db.Uuid
-  requestId   String          @map("request_id") @db.Uuid
-  orderItemId String          @map("order_item_id") @db.Uuid
-  quantity    Int
-  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  request     SupplierRequest @relation(fields: [requestId], references: [id])
-  orderItem   OrderItem       @relation(fields: [orderItemId], references: [id])
+  nguoiDungId String          @map("nguoi_dung_id") @db.Uuid
+  donHangId   String?         @map("don_hang_id") @db.Uuid
+  tieuDe      String          @map("tieu_de") @db.VarChar(255)
+  noiDung     String          @map("noi_dung")
+  trangThai   TrangThaiTicket @default(MOI) @map("trang_thai")
+  taoLuc      DateTime        @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc  DateTime        @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa       Boolean         @default(false) @map("da_xoa")
+  nguoiDung   NguoiDung       @relation(fields: [nguoiDungId], references: [id])
+  donHang     DonHang?        @relation(fields: [donHangId], references: [id])
 
-  @@index([requestId], map: "idx_supplier_request_items_request")
-  @@index([orderItemId], map: "idx_supplier_request_items_order_item")
-  @@map("supplier_request_items")
+  @@index([nguoiDungId], map: "idx_ticket_nguoi_dung")
+  @@index([trangThai], map: "idx_ticket_trang_thai")
+  @@map("ticket_ho_tro")
 }
 
-model Inventory {
-  id                String          @id @default(uuid()) @db.Uuid
-  variantId         String          @map("variant_id") @db.Uuid
-  accountEmail      String?         @map("account_email") @db.VarChar(255)
-  encryptedPassword String?         @map("encrypted_password")
-  metadata          Json?
-  status            InventoryStatus @default(AVAILABLE)
-  reservedBy        String?         @map("reserved_by") @db.Uuid
-  reservedAt        DateTime?       @map("reserved_at") @db.Timestamptz(6)
-  reservedUntil     DateTime?       @map("reserved_until") @db.Timestamptz(6)
-  reservedOrderId   String?         @map("reserved_order_id") @db.Uuid
-  deliveredAt       DateTime?       @map("delivered_at") @db.Timestamptz(6)
-  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted         Boolean         @default(false) @map("is_deleted")
-  variant           ProductVariant  @relation(fields: [variantId], references: [id])
-  reserver          User?           @relation("InventoryReservedBy", fields: [reservedBy], references: [id])
-  orderItems        OrderItem[]
-  deliveries        Delivery[]
+model ThongBao {
+  id          String       @id @default(uuid()) @db.Uuid
+  nguoiDungId String       @map("nguoi_dung_id") @db.Uuid
+  loai        LoaiThongBao @default(HE_THONG) @map("loai")
+  tieuDe      String       @map("tieu_de") @db.VarChar(255)
+  noiDung     String       @map("noi_dung")
+  daDoc       Boolean      @default(false) @map("da_doc")
+  taoLuc      DateTime     @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc  DateTime     @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa       Boolean      @default(false) @map("da_xoa")
+  nguoiDung   NguoiDung    @relation(fields: [nguoiDungId], references: [id])
 
-  @@index([variantId], map: "idx_inventory_variant")
-  @@index([status], map: "idx_inventory_status")
-  @@index([reservedBy], map: "idx_inventory_reserved_by")
-  @@index([reservedOrderId], map: "idx_inventory_reserved_order")
-  @@index([status, reservedUntil], map: "idx_inventory_status_reserved_until")
-  @@map("inventories")
+  @@index([nguoiDungId, daDoc], map: "idx_thong_bao_nguoi_dung")
+  @@map("thong_bao")
 }
 
-model Order {
-  id            String        @id @default(uuid()) @db.Uuid
-  orderNo       String        @unique @map("order_no") @db.VarChar(50)
-  userId        String        @map("user_id") @db.Uuid
-  subtotal      Decimal       @default(0) @db.Decimal(18, 2)
-  discount      Decimal       @default(0) @db.Decimal(18, 2)
-  totalAmount   Decimal       @default(0) @map("total_amount") @db.Decimal(18, 2)
-  couponId      String?       @map("coupon_id") @db.Uuid
-  status        OrderStatus   @default(PENDING_PAYMENT)
-  paymentStatus PaymentStatus @default(PENDING) @map("payment_status")
-  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted     Boolean       @default(false) @map("is_deleted")
-  user          User          @relation(fields: [userId], references: [id])
-  coupon        Coupon?       @relation(fields: [couponId], references: [id])
-  items         OrderItem[]
-  payments      Payment[]
-  tickets       Ticket[]
-  couponUsages  CouponUsage[]
-  reviews       Review[]
-  supplierRequests SupplierRequest[]
+model TokenDangNhapAdmin {
+  id          String    @id @default(uuid()) @db.Uuid
+  nguoiDungId String    @map("nguoi_dung_id") @db.Uuid
+  tokenHash   String    @unique @map("token_hash")
+  daDung      Boolean   @default(false) @map("da_dung")
+  hetHanLuc   DateTime  @map("het_han_luc") @db.Timestamptz(6)
+  dungLuc     DateTime? @map("dung_luc") @db.Timestamptz(6)
+  taoLuc      DateTime  @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc  DateTime  @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa       Boolean   @default(false) @map("da_xoa")
+  nguoiDung   NguoiDung @relation(fields: [nguoiDungId], references: [id], onDelete: Cascade)
 
-  @@index([userId], map: "idx_orders_user")
-  @@index([couponId], map: "idx_orders_coupon")
-  @@index([status], map: "idx_orders_status")
-  @@index([paymentStatus], map: "idx_orders_payment_status")
-  @@index([createdAt(sort: Desc)], map: "idx_orders_created")
-  @@map("orders")
-}
-
-model Coupon {
-  id             String          @id @default(uuid()) @db.Uuid
-  code           String          @unique @db.VarChar(100)
-  name           String          @db.VarChar(255)
-  description    String?
-  discountType   DiscountType    @map("discount_type")
-  discountValue  Decimal         @map("discount_value") @db.Decimal(18, 2)
-  maxDiscount    Decimal?        @map("max_discount") @db.Decimal(18, 2)
-  minOrderAmount Decimal?        @map("min_order_amount") @db.Decimal(18, 2)
-  usageLimit     Int?            @map("usage_limit")
-  usedCount      Int             @default(0) @map("used_count")
-  startsAt       DateTime?       @map("starts_at") @db.Timestamptz(6)
-  endsAt         DateTime?       @map("ends_at") @db.Timestamptz(6)
-  isActive       Boolean         @default(true) @map("is_active")
-  createdBy      String?         @map("created_by") @db.Uuid
-  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted      Boolean         @default(false) @map("is_deleted")
-  creator        User?           @relation(fields: [createdBy], references: [id])
-  products       CouponProduct[]
-  users          CouponUser[]
-  usages         CouponUsage[]
-  orders         Order[]
-
-  @@index([code], map: "idx_coupons_code")
-  @@index([isActive], map: "idx_coupons_active")
-  @@index([startsAt], map: "idx_coupons_starts")
-  @@index([endsAt], map: "idx_coupons_ends")
-  @@map("coupons")
-}
-
-model CouponProduct {
-  id               String         @id @default(uuid()) @db.Uuid
-  couponId         String         @map("coupon_id") @db.Uuid
-  productVariantId String         @map("product_variant_id") @db.Uuid
-  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted        Boolean        @default(false) @map("is_deleted")
-  coupon           Coupon         @relation(fields: [couponId], references: [id], onDelete: Cascade)
-  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Cascade)
-
-  @@unique([couponId, productVariantId], map: "uq_coupon_products_coupon_variant")
-  @@index([couponId], map: "idx_coupon_products_coupon")
-  @@index([productVariantId], map: "idx_coupon_products_variant")
-  @@map("coupon_products")
-}
-
-model CouponUser {
-  id        String   @id @default(uuid()) @db.Uuid
-  couponId  String   @map("coupon_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted Boolean  @default(false) @map("is_deleted")
-  coupon    Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([couponId, userId], map: "uq_coupon_users_coupon_user")
-  @@index([couponId], map: "idx_coupon_users_coupon")
-  @@index([userId], map: "idx_coupon_users_user")
-  @@map("coupon_users")
-}
-
-model CouponUsage {
-  id             String   @id @default(uuid()) @db.Uuid
-  couponId       String   @map("coupon_id") @db.Uuid
-  userId         String   @map("user_id") @db.Uuid
-  orderId        String   @map("order_id") @db.Uuid
-  discountAmount Decimal  @map("discount_amount") @db.Decimal(18, 2)
-  usedAt         DateTime @default(now()) @map("used_at") @db.Timestamptz(6)
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted      Boolean  @default(false) @map("is_deleted")
-  coupon         Coupon   @relation(fields: [couponId], references: [id])
-  user           User     @relation(fields: [userId], references: [id])
-  order          Order    @relation(fields: [orderId], references: [id])
-
-  @@unique([couponId, orderId], map: "uq_coupon_usages_coupon_order")
-  @@index([couponId], map: "idx_coupon_usages_coupon")
-  @@index([userId], map: "idx_coupon_usages_user")
-  @@index([orderId], map: "idx_coupon_usages_order")
-  @@map("coupon_usages")
-}
-
-model OrderItem {
-  id          String         @id @default(uuid()) @db.Uuid
-  orderId     String         @map("order_id") @db.Uuid
-  variantId   String         @map("variant_id") @db.Uuid
-  inventoryId String?        @map("inventory_id") @db.Uuid
-  quantity    Int            @default(1)
-  unitPrice   Decimal        @map("unit_price") @db.Decimal(18, 2)
-  totalPrice  Decimal        @map("total_price") @db.Decimal(18, 2)
-  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted   Boolean        @default(false) @map("is_deleted")
-  order       Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  variant     ProductVariant @relation(fields: [variantId], references: [id])
-  inventory   Inventory?     @relation(fields: [inventoryId], references: [id])
-  deliveries  Delivery[]
-  fulfillments Fulfillment[]
-  supplierRequestItems SupplierRequestItem[]
-
-  @@index([orderId], map: "idx_order_items_order")
-  @@index([variantId], map: "idx_order_items_variant")
-  @@index([inventoryId], map: "idx_order_items_inventory")
-  @@map("order_items")
-}
-
-model Fulfillment {
-  id          String              @id @default(uuid()) @db.Uuid
-  orderItemId String              @map("order_item_id") @db.Uuid
-  status      FulfillmentStatus   @default(PENDING)
-  deliveredAt DateTime?           @map("delivered_at") @db.Timestamptz(6)
-  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  orderItem   OrderItem           @relation(fields: [orderItemId], references: [id])
-  resources   FulfillmentResource[]
-
-  @@index([orderItemId], map: "idx_fulfillments_order_item")
-  @@index([status], map: "idx_fulfillments_status")
-  @@map("fulfillments")
-}
-
-model FulfillmentResource {
-  id            String         @id @default(uuid()) @db.Uuid
-  fulfillmentId String         @map("fulfillment_id") @db.Uuid
-  type          DeliveryMethod
-  payload       Json
-  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  fulfillment   Fulfillment    @relation(fields: [fulfillmentId], references: [id])
-
-  @@index([fulfillmentId], map: "idx_fulfillment_resources_fulfillment")
-  @@index([type], map: "idx_fulfillment_resources_type")
-  @@map("fulfillment_resources")
-}
-
-model Payment {
-  id             String          @id @default(uuid()) @db.Uuid
-  orderId        String          @map("order_id") @db.Uuid
-  provider       PaymentProvider @default(BANKING_QR)
-  amount         Decimal         @db.Decimal(18, 2)
-  transactionNo  String?         @map("transaction_no") @db.VarChar(255)
-  paymentContent String?         @map("payment_content") @db.VarChar(255)
-  qrContent      String?         @map("qr_content")
-  status         PaymentStatus   @default(PENDING)
-  paidAt         DateTime?       @map("paid_at") @db.Timestamptz(6)
-  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted      Boolean         @default(false) @map("is_deleted")
-  order          Order           @relation(fields: [orderId], references: [id])
-
-  @@index([orderId], map: "idx_payment_order")
-  @@index([status], map: "idx_payments_status")
-  @@index([provider], map: "idx_payments_provider")
-  @@map("payments")
-}
-
-model Delivery {
-  id              String         @id @default(uuid()) @db.Uuid
-  orderItemId     String         @map("order_item_id") @db.Uuid
-  inventoryId     String         @map("inventory_id") @db.Uuid
-  deliveryContent String?        @map("delivery_content")
-  metadata        Json?
-  deliveredAt     DateTime?      @map("delivered_at") @db.Timestamptz(6)
-  status          DeliveryStatus @default(PENDING)
-  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted       Boolean        @default(false) @map("is_deleted")
-  orderItem       OrderItem      @relation(fields: [orderItemId], references: [id])
-  inventory       Inventory      @relation(fields: [inventoryId], references: [id])
-
-  @@index([orderItemId], map: "idx_deliveries_order_item")
-  @@index([inventoryId], map: "idx_deliveries_inventory")
-  @@index([status], map: "idx_deliveries_status")
-  @@map("deliveries")
-}
-
-model Ticket {
-  id        String       @id @default(uuid()) @db.Uuid
-  userId    String       @map("user_id") @db.Uuid
-  orderId   String?      @map("order_id") @db.Uuid
-  subject   String       @db.VarChar(255)
-  content   String
-  status    TicketStatus @default(OPEN)
-  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted Boolean      @default(false) @map("is_deleted")
-  user      User         @relation(fields: [userId], references: [id])
-  order     Order?       @relation(fields: [orderId], references: [id])
-
-  @@index([userId], map: "idx_tickets_user")
-  @@index([orderId], map: "idx_tickets_order")
-  @@index([status], map: "idx_tickets_status")
-  @@map("tickets")
-}
-
-model Review {
-  id               String         @id @default(uuid()) @db.Uuid
-  orderId          String         @map("order_id") @db.Uuid
-  userId           String         @map("user_id") @db.Uuid
-  productVariantId String         @map("product_variant_id") @db.Uuid
-  rating           Int
-  comment          String?
-  isHidden         Boolean        @default(false) @map("is_hidden")
-  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted        Boolean        @default(false) @map("is_deleted")
-  order            Order          @relation(fields: [orderId], references: [id])
-  user             User           @relation(fields: [userId], references: [id])
-  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id])
-
-  @@unique([orderId, productVariantId], map: "uq_reviews_order_variant")
-  @@index([userId], map: "idx_reviews_user")
-  @@index([productVariantId], map: "idx_reviews_variant")
-  @@index([rating], map: "idx_reviews_rating")
-  @@index([isHidden], map: "idx_reviews_hidden")
-  @@map("reviews")
-}
-
-model ActivityLog {
-  id         String          @id @default(uuid()) @db.Uuid
-  userId     String?         @map("user_id") @db.Uuid
-  type       ActivityLogType
-  entityName String          @map("entity_name") @db.VarChar(100)
-  entityId   String?         @map("entity_id") @db.Uuid
-  metadata   Json?
-  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted  Boolean         @default(false) @map("is_deleted")
-  user       User?           @relation(fields: [userId], references: [id])
-
-  @@index([userId], map: "idx_activity_logs_user")
-  @@index([type], map: "idx_activity_logs_type")
-  @@index([entityName, entityId], map: "idx_activity_logs_entity")
-  @@index([createdAt(sort: Desc)], map: "idx_activity_logs_created")
-  @@map("activity_logs")
-}
-
-model Notification {
-  id        String           @id @default(uuid()) @db.Uuid
-  userId    String           @map("user_id") @db.Uuid
-  type      NotificationType @default(SYSTEM)
-  title     String           @db.VarChar(255)
-  content   String
-  isRead    Boolean          @default(false) @map("is_read")
-  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted Boolean          @default(false) @map("is_deleted")
-  user      User             @relation(fields: [userId], references: [id])
-
-  @@index([userId], map: "idx_notification_user")
-  @@index([isRead], map: "idx_notifications_read")
-  @@map("notifications")
-}
-
-model RefreshToken {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  tokenHash String   @map("token_hash")
-  expiredAt DateTime @map("expired_at") @db.Timestamptz(6)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted Boolean  @default(false) @map("is_deleted")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId], map: "idx_refresh_tokens_user")
-  @@index([expiredAt], map: "idx_refresh_tokens_expired_at")
-  @@map("refresh_tokens")
-}
-
-model AdminLoginToken {
-  id        String                @id @default(uuid()) @db.Uuid
-  userId    String                @map("user_id") @db.Uuid
-  tokenHash String                @unique @map("token_hash")
-  status    AdminLoginTokenStatus @default(PENDING)
-  expiredAt DateTime              @map("expired_at") @db.Timestamptz(6)
-  usedAt    DateTime?             @map("used_at") @db.Timestamptz(6)
-  createdAt DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted Boolean               @default(false) @map("is_deleted")
-  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId], map: "idx_admin_login_tokens_user")
-  @@index([status, expiredAt], map: "idx_admin_login_tokens_status_expired")
-  @@map("admin_login_tokens")
+  @@index([nguoiDungId], map: "idx_token_admin_nguoi_dung")
+  @@map("token_dang_nhap_admin")
 }
 
 model AuditLog {
-  id         String      @id @default(uuid()) @db.Uuid
-  actorId    String?     @map("actor_id") @db.Uuid
-  entityName String      @map("entity_name") @db.VarChar(100)
-  entityId   String?     @map("entity_id") @db.Uuid
-  action     AuditAction
-  oldData    Json?       @map("old_data")
-  newData    Json?       @map("new_data")
-  ipAddress  String?     @map("ip_address") @db.VarChar(64)
-  userAgent  String?     @map("user_agent") @db.VarChar(500)
-  createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isDeleted  Boolean     @default(false) @map("is_deleted")
-  actor      User?       @relation("AuditActor", fields: [actorId], references: [id])
+  id              String     @id @default(uuid()) @db.Uuid
+  nguoiThucHienId String?    @map("nguoi_thuc_hien_id") @db.Uuid
+  tenBang         String     @map("ten_bang") @db.VarChar(120)
+  banGhiId        String?    @map("ban_ghi_id") @db.Uuid
+  hanhDong        LoaiAudit  @map("hanh_dong")
+  duLieuCu        Json?      @map("du_lieu_cu")
+  duLieuMoi       Json?      @map("du_lieu_moi")
+  ip              String?    @db.VarChar(64)
+  userAgent       String?    @map("user_agent") @db.VarChar(500)
+  taoLuc          DateTime   @default(now()) @map("tao_luc") @db.Timestamptz(6)
+  capNhatLuc      DateTime   @default(now()) @updatedAt @map("cap_nhat_luc") @db.Timestamptz(6)
+  daXoa           Boolean    @default(false) @map("da_xoa")
+  nguoiThucHien   NguoiDung? @relation("AuditNguoiThucHien", fields: [nguoiThucHienId], references: [id])
 
-  @@index([actorId], map: "idx_audit_logs_actor")
-  @@index([entityName, entityId], map: "idx_audit_logs_entity")
-  @@index([createdAt(sort: Desc)], map: "idx_audit_logs_created_at")
-  @@map("audit_logs")
+  @@index([nguoiThucHienId], map: "idx_audit_nguoi_thuc_hien")
+  @@index([tenBang, banGhiId], map: "idx_audit_ban_ghi")
+  @@index([taoLuc(sort: Desc)], map: "idx_audit_tao_luc")
+  @@map("audit_log")
 }

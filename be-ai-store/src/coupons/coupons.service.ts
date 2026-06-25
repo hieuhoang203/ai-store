@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { ActivityLogType, DiscountType, Prisma } from '../../generated/prisma/client.js';
+import { LoaiGiamGia, Prisma, TrangThaiChung } from '../../generated/prisma/client.js';
 import { AuthService } from '../auth/auth.service';
 import { PrismaService } from '../database/prisma.service';
 import { ValidateCouponDto, ValidateCouponItemDto } from './dto/validate-coupon.dto';
@@ -16,7 +16,7 @@ export type CouponValidationResult = {
     id: string;
     code: string;
     name: string;
-    discountType: DiscountType;
+    discountType: LoaiGiamGia;
     discountValue: string;
   };
   subtotal: Prisma.Decimal;
@@ -68,40 +68,42 @@ export class CouponsService {
     if (!normalizedCode) return null;
 
     if (lock) {
-      await tx.$queryRaw`SELECT "id" FROM "coupons" WHERE "code" = ${normalizedCode} FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id" FROM "ma_giam_gia" WHERE "ma" = ${normalizedCode} FOR UPDATE`;
     }
 
-    const coupon = await tx.coupon.findFirst({
-      where: { code: normalizedCode, isDeleted: false },
+    const coupon = await tx.maGiamGia.findFirst({
+      where: { ma: normalizedCode, daXoa: false },
       include: {
-        products: { where: { isDeleted: false } },
-        users: { where: { isDeleted: false } },
+        goiDichVu: true,
+        nguoiDung: true,
       },
     });
 
-    if (!coupon) {
-      throw new BadRequestException('Mã giảm giá không tồn tại.');
-    }
+    if (!coupon) throw new BadRequestException('Mã giảm giá không tồn tại.');
 
     const now = new Date();
-    if (!coupon.isActive) throw new BadRequestException('Mã giảm giá chưa được kích hoạt.');
-    if (coupon.startsAt && coupon.startsAt > now) throw new BadRequestException('Mã giảm giá chưa đến thời gian sử dụng.');
-    if (coupon.endsAt && coupon.endsAt < now) throw new BadRequestException('Mã giảm giá đã hết hạn.');
-    if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) {
+    if (coupon.trangThai !== TrangThaiChung.DANG_HOAT_DONG) {
+      throw new BadRequestException('Mã giảm giá chưa được kích hoạt.');
+    }
+    if (coupon.batDauLuc && coupon.batDauLuc > now) {
+      throw new BadRequestException('Mã giảm giá chưa đến thời gian sử dụng.');
+    }
+    if (coupon.ketThucLuc && coupon.ketThucLuc < now) {
+      throw new BadRequestException('Mã giảm giá đã hết hạn.');
+    }
+    if (coupon.gioiHanLuotDung !== null && coupon.soLuotDaDung >= coupon.gioiHanLuotDung) {
       throw new BadRequestException('Mã giảm giá đã hết lượt sử dụng.');
     }
-    if (coupon.users.length && !coupon.users.some((item) => item.userId === userId)) {
+    if (coupon.nguoiDung.length && !coupon.nguoiDung.some((item) => item.nguoiDungId === userId)) {
       throw new BadRequestException('Mã giảm giá không áp dụng cho tài khoản của bạn.');
     }
-    if (coupon.minOrderAmount && subtotal.lessThan(coupon.minOrderAmount)) {
-      throw new BadRequestException(
-        `Đơn hàng cần tối thiểu ${this.formatMoney(coupon.minOrderAmount)}đ để dùng mã này.`,
-      );
+    if (coupon.donToiThieu && subtotal.lessThan(coupon.donToiThieu)) {
+      throw new BadRequestException(`Đơn hàng cần tối thiểu ${this.formatMoney(coupon.donToiThieu)}đ để dùng mã này.`);
     }
 
-    const allowedVariantIds = new Set(coupon.products.map((item) => item.productVariantId));
-    const eligibleItems = allowedVariantIds.size
-      ? items.filter((item) => allowedVariantIds.has(item.variantId))
+    const allowedGoiIds = new Set(coupon.goiDichVu.map((item) => item.goiDichVuId));
+    const eligibleItems = allowedGoiIds.size
+      ? items.filter((item) => allowedGoiIds.has(item.variantId))
       : items;
     const eligibleSubtotal = this.sumItems(eligibleItems);
 
@@ -115,10 +117,10 @@ export class CouponsService {
     return {
       coupon: {
         id: coupon.id,
-        code: coupon.code,
-        name: coupon.name,
-        discountType: coupon.discountType,
-        discountValue: coupon.discountValue.toString(),
+        code: coupon.ma,
+        name: coupon.ten,
+        discountType: coupon.loaiGiamGia,
+        discountValue: coupon.giaTriGiam.toString(),
       },
       subtotal,
       eligibleSubtotal,
@@ -141,39 +143,36 @@ export class CouponsService {
       discountAmount: Prisma.Decimal;
     },
   ) {
-    await tx.coupon.update({
+    await tx.maGiamGia.update({
       where: { id: couponId },
-      data: { usedCount: { increment: 1 } },
+      data: { soLuotDaDung: { increment: 1 } },
     });
-    await tx.couponUsage.create({
-      data: { couponId, userId, orderId, discountAmount },
-    });
-    await tx.activityLog.create({
+    await tx.luotDungMaGiamGia.create({
       data: {
-        userId,
-        type: ActivityLogType.COUPON_APPLIED,
-        entityName: 'coupon',
-        entityId: couponId,
-        metadata: { orderId, discountAmount: discountAmount.toString() },
+        maGiamGiaId: couponId,
+        nguoiDungId: userId,
+        donHangId: orderId,
+        soTienGiam: discountAmount,
       },
     });
   }
 
   async getCheckoutItems(tx: Prisma.TransactionClient, requestedItems: Array<{ variantId: string; quantity: number }>) {
-    const variants = await tx.productVariant.findMany({
+    const goiDichVu = await tx.goiDichVu.findMany({
       where: {
         id: { in: requestedItems.map((item) => item.variantId) },
-        active: true,
-        isDeleted: false,
-        product: { isDeleted: false, isActive: true },
+        choPhepMua: true,
+        daXoa: false,
+        trangThai: TrangThaiChung.DANG_HOAT_DONG,
+        sanPham: { daXoa: false, trangThai: TrangThaiChung.DANG_HOAT_DONG },
       },
     });
-    const variantMap = new Map(variants.map((variant) => [variant.id, variant]));
+    const goiMap = new Map(goiDichVu.map((goi) => [goi.id, goi]));
 
     return requestedItems.map((item) => {
-      const variant = variantMap.get(item.variantId);
-      if (!variant) throw new BadRequestException('Gói sản phẩm không còn khả dụng.');
-      const unitPrice = variant.sellPrice;
+      const goi = goiMap.get(item.variantId);
+      if (!goi) throw new BadRequestException('Gói sản phẩm không còn khả dụng.');
+      const unitPrice = goi.giaBan;
       const totalPrice = unitPrice.mul(item.quantity);
       return { variantId: item.variantId, quantity: item.quantity, unitPrice, totalPrice };
     });
@@ -182,7 +181,13 @@ export class CouponsService {
   presentValidation(result: CouponValidationResult) {
     return {
       success: true,
-      coupon: result.coupon,
+      coupon: {
+        id: result.coupon.id,
+        code: result.coupon.code,
+        name: result.coupon.name,
+        discountType: result.coupon.discountType,
+        discountValue: result.coupon.discountValue,
+      },
       subtotal: result.subtotal.toString(),
       eligibleSubtotal: result.eligibleSubtotal.toString(),
       discountAmount: result.discountAmount.toString(),
@@ -204,17 +209,17 @@ export class CouponsService {
 
   private calculateDiscount(
     coupon: {
-      discountType: DiscountType;
-      discountValue: Prisma.Decimal;
-      maxDiscount: Prisma.Decimal | null;
+      loaiGiamGia: LoaiGiamGia;
+      giaTriGiam: Prisma.Decimal;
+      giamToiDa: Prisma.Decimal | null;
     },
     eligibleSubtotal: Prisma.Decimal,
   ) {
     const raw =
-      coupon.discountType === DiscountType.PERCENT
-        ? eligibleSubtotal.mul(coupon.discountValue).div(100)
-        : coupon.discountValue;
-    const capped = coupon.maxDiscount ? Prisma.Decimal.min(raw, coupon.maxDiscount) : raw;
+      coupon.loaiGiamGia === LoaiGiamGia.PHAN_TRAM
+        ? eligibleSubtotal.mul(coupon.giaTriGiam).div(100)
+        : coupon.giaTriGiam;
+    const capped = coupon.giamToiDa ? Prisma.Decimal.min(raw, coupon.giamToiDa) : raw;
     return Prisma.Decimal.min(capped, eligibleSubtotal).toDecimalPlaces(0);
   }
 

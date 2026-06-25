@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { OrderStatus, PaymentStatus } from '../../generated/prisma/client.js';
+import { TrangThaiDonHang, TrangThaiThanhToan } from '../../generated/prisma/client.js';
 import { AuthService } from '../auth/auth.service';
 import { PrismaService } from '../database/prisma.service';
 import { CreateTicketDto, CreateWarrantyTicketDto, ListMyTicketsDto } from './dto/create-ticket.dto';
@@ -12,40 +12,41 @@ export class TicketsService {
   ) {}
 
   create(dto: CreateTicketDto) {
-    return this.prisma.ticket.create({ data: dto });
+    return this.prisma.ticketHoTro.create({
+      data: {
+        nguoiDungId: dto.userId,
+        donHangId: dto.orderId,
+        tieuDe: dto.subject,
+        noiDung: dto.content,
+      },
+    });
   }
 
   async createWarrantyTicket(dto: CreateWarrantyTicketDto) {
     const user = await this.authService.getOrCreateTelegramUser(dto.initData);
-    const order = await this.prisma.order.findFirst({
+    const order = await this.prisma.donHang.findFirst({
       where: {
         id: dto.orderId,
-        userId: user.id,
-        isDeleted: false,
-        OR: [
-          { paymentStatus: PaymentStatus.PAID },
-          { status: OrderStatus.DELIVERED },
-        ],
+        nguoiDungId: user.id,
+        daXoa: false,
+        OR: [{ trangThaiThanhToan: TrangThaiThanhToan.DA_THANH_TOAN }, { trangThai: TrangThaiDonHang.DA_GIAO }],
       },
-      select: { id: true, orderNo: true },
+      select: { id: true, maDonHang: true },
     });
-
-    if (!order) {
-      throw new NotFoundException('Order not found');
-    }
+    if (!order) throw new NotFoundException('Order not found');
 
     const accountLine = dto.accountLabel ? `\nTài khoản: ${dto.accountLabel}` : '';
     const productLine = dto.productName
       ? `\nDịch vụ: ${dto.productName}${dto.variantName ? ` - ${dto.variantName}` : ''}`
       : '';
 
-    return this.prisma.ticket.create({
+    return this.prisma.ticketHoTro.create({
       data: {
-        userId: user.id,
-        orderId: order.id,
-        subject: `Yêu cầu bảo hành đơn ${order.orderNo}`,
-        content: [
-          `Khách hàng yêu cầu bảo hành cho đơn ${order.orderNo}.`,
+        nguoiDungId: user.id,
+        donHangId: order.id,
+        tieuDe: `Yêu cầu bảo hành đơn ${order.maDonHang}`,
+        noiDung: [
+          `Khách hàng yêu cầu bảo hành cho đơn ${order.maDonHang}.`,
           productLine.trimStart(),
           accountLine.trimStart(),
           '',
@@ -60,36 +61,29 @@ export class TicketsService {
 
   async listMine(dto: ListMyTicketsDto) {
     const user = await this.authService.getOrCreateTelegramUser(dto.initData);
-    const tickets = await this.prisma.ticket.findMany({
-      where: { userId: user.id, isDeleted: false },
-      include: {
-        order: {
-          select: {
-            id: true,
-            orderNo: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
+    const tickets = await this.prisma.ticketHoTro.findMany({
+      where: { nguoiDungId: user.id, daXoa: false },
+      include: { donHang: { select: { id: true, maDonHang: true } } },
+      orderBy: { taoLuc: 'desc' },
       take: 50,
     });
 
     return tickets.map((ticket) => ({
       id: ticket.id,
       code: this.formatTicketCode(ticket.id),
-      subject: ticket.subject,
-      content: ticket.content,
-      status: ticket.status,
-      createdAt: ticket.createdAt,
-      updatedAt: ticket.updatedAt,
-      order: ticket.order,
+      subject: ticket.tieuDe,
+      content: ticket.noiDung,
+      status: ticket.trangThai,
+      createdAt: ticket.taoLuc,
+      updatedAt: ticket.capNhatLuc,
+      order: ticket.donHang ? { id: ticket.donHang.id, orderNo: ticket.donHang.maDonHang } : null,
     }));
   }
 
   listForUser(userId: string) {
-    return this.prisma.ticket.findMany({
-      where: { userId, isDeleted: false },
-      orderBy: { createdAt: 'desc' },
+    return this.prisma.ticketHoTro.findMany({
+      where: { nguoiDungId: userId, daXoa: false },
+      orderBy: { taoLuc: 'desc' },
     });
   }
 

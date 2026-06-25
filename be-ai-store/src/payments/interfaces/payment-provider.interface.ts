@@ -1,6 +1,6 @@
-import { Payment } from '../../../generated/prisma/client.js';
+import { ThanhToan } from '../../../generated/prisma/client.js';
 
 export interface PaymentProviderAdapter {
   createPaymentContent(orderNo: string, amount: string): string;
-  createQrContent(payment: Payment): string;
+  createQrContent(payment: ThanhToan): string;
 }

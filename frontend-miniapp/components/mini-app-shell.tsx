@@ -90,13 +90,17 @@ export function MiniAppShell() {
     const storedPaymentResult = window.sessionStorage.getItem(PAYMENT_RESULT_STORAGE_KEY);
     if (!storedPaymentResult) return;
 
-    try {
-      setPaymentResult(JSON.parse(storedPaymentResult) as CheckoutResult);
-      setActiveTab("cart");
-    } catch {
+    if (items.length > 0) {
+      try {
+        setPaymentResult(JSON.parse(storedPaymentResult) as CheckoutResult);
+        setActiveTab("cart");
+      } catch {
+        window.sessionStorage.removeItem(PAYMENT_RESULT_STORAGE_KEY);
+      }
+    } else {
       window.sessionStorage.removeItem(PAYMENT_RESULT_STORAGE_KEY);
     }
-  }, []);
+  }, [items.length]);
 
   if (supplierMode.connect || supplierMode.requestToken) {
     return (
@@ -209,6 +213,11 @@ export function MiniAppShell() {
     }
   }
 
+  function handleCancelPayment() {
+    setPaymentResult(null);
+    window.sessionStorage.removeItem(PAYMENT_RESULT_STORAGE_KEY);
+  }
+
   return (
     <main className="mx-auto flex h-screen min-h-[100dvh] max-w-md flex-col overflow-hidden border-x border-white/10 bg-[#050805]/72 pb-[calc(72px+env(safe-area-inset-bottom))] shadow-2xl shadow-black/50">
       <ToastBanner toast={toast} />
@@ -245,6 +254,7 @@ export function MiniAppShell() {
             onQuantityChange={handleQuantityChange}
             onCheckout={submitCheckout}
             onRenewPayment={submitCheckout}
+            onCancelPayment={handleCancelPayment}
             onCouponCodeChange={setCouponCode}
             onApplyCoupon={applyCoupon}
             onClearCoupon={() => {

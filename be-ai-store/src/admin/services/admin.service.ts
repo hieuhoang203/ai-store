@@ -53,6 +53,16 @@ export class AdminService {
   async create(entityKey: string, payload: Record<string, unknown>) {
     const config = this.getConfig(entityKey);
     const data = this.sanitizePayload(config, payload, 'create');
+
+    if (entityKey === 'link-moi-nha-cung-cap') {
+      if (!data.maToken) {
+        data.maToken = require('crypto').randomBytes(24).toString('hex');
+      }
+      if (!data.trangThai) {
+        data.trangThai = 'CHUA_SU_DUNG';
+      }
+    }
+
     const record = await this.repository.create(config, data);
     return this.serializeRecord(config, record);
   }

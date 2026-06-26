@@ -23,6 +23,12 @@ export class SupplierConnectDto {
   @IsString()
   @MaxLength(255)
   email?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  token?: string;
 }
 
 export class SupplierFulfillRequestDto {

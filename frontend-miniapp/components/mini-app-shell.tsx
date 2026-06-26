@@ -45,9 +45,14 @@ export function MiniAppShell() {
   const [couponResult, setCouponResult] = useState<CouponValidationResult | null>(null);
   const [couponProcessing, setCouponProcessing] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
-  const [supplierMode, setSupplierMode] = useState<{ connect: boolean; requestToken: string | null }>({
+  const [supplierMode, setSupplierMode] = useState<{
+    connect: boolean;
+    requestToken: string | null;
+    inviteToken: string | null;
+  }>({
     connect: false,
     requestToken: null,
+    inviteToken: null,
   });
   const { data: products = [], isLoading } = useQuery({ queryKey: ["products"], queryFn: getProducts });
   const { items, addItem, removeItem, updateQuantity, clear } = useCartStore();
@@ -76,8 +81,9 @@ export function MiniAppShell() {
     const params = new URLSearchParams(window.location.search);
     const supplier = params.get("supplier") === "connect";
     const requestToken = params.get("supplierRequest");
+    const inviteToken = params.get("token");
     if (supplier || requestToken) {
-      setSupplierMode({ connect: supplier, requestToken });
+      setSupplierMode({ connect: supplier, requestToken, inviteToken });
       return;
     }
 
@@ -93,7 +99,13 @@ export function MiniAppShell() {
   }, []);
 
   if (supplierMode.connect || supplierMode.requestToken) {
-    return <SupplierWorkspace initData={initData} requestToken={supplierMode.requestToken} />;
+    return (
+      <SupplierWorkspace
+        initData={initData}
+        requestToken={supplierMode.requestToken}
+        inviteToken={supplierMode.inviteToken}
+      />
+    );
   }
 
   useEffect(() => {

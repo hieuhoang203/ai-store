@@ -34,6 +34,7 @@ export async function connectSupplier(input: {
   displayName?: string;
   phone?: string;
   email?: string;
+  token?: string;
 }) {
   const response = await api.post<SupplierConnectResult>("/suppliers/connect", input);
   return response.data;

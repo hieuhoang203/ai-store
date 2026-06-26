@@ -206,7 +206,7 @@ export const ADMIN_ENTITIES: AdminEntityConfig[] = [
     fields: [
       { name: 'id', label: 'ID', type: 'uuid', readonly: true, list: false, create: false, update: false },
       { name: 'nhaCungCapId', label: 'Nhà cung cấp', type: 'relation', list: true, relation: { entityKey: 'nha-cung-cap', labelField: 'tenHienThi' } },
-      { name: 'maToken', label: 'Token/link', type: 'string', required: true, list: true },
+      { name: 'maToken', label: 'Token/link', type: 'string', required: false, list: true },
       { name: 'tenMoi', label: 'Tên mời', type: 'string', list: true },
       { name: 'ghiChu', label: 'Ghi chú', type: 'text', list: false },
       { name: 'telegramIdDaGan', label: 'Telegram đã gán', type: 'bigint', list: true },

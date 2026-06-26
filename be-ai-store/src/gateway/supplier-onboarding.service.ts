@@ -26,21 +26,41 @@ export class SupplierOnboardingService {
     return `${publicUrl.replace(/\/$/, '')}/suppliers/join`;
   }
 
-  getMiniAppRedirectUrl() {
+  getMiniAppRedirectUrl(token?: string) {
     const miniAppUrl = this.configService.get<string>('TELEGRAM_MINIAPP_URL') || 'http://localhost:405';
     const separator = miniAppUrl.includes('?') ? '&' : '?';
-    return `${miniAppUrl}${separator}supplier=connect`;
+    return `${miniAppUrl}${separator}supplier=connect${token ? `&token=${token}` : ''}`;
   }
 
   async connect(dto: SupplierConnectDto) {
     const user = await this.authService.getOrCreateTelegramUser(dto.initData);
     if (!user.telegramId) throw new BadRequestException('Telegram profile is required');
 
+    let inviteLinkRecord: any = null;
+    if (dto.token) {
+      inviteLinkRecord = await this.prisma.lienKetNhaCungCap.findUnique({
+        where: { maToken: dto.token },
+      });
+      if (!inviteLinkRecord) {
+        throw new BadRequestException('Mã mời không tồn tại');
+      }
+      if (inviteLinkRecord.trangThai !== 'CHUA_SU_DUNG') {
+        throw new BadRequestException('Mã mời đã được sử dụng hoặc đã hết hạn');
+      }
+      if (inviteLinkRecord.hetHanLuc && inviteLinkRecord.hetHanLuc < new Date()) {
+        await this.prisma.lienKetNhaCungCap.update({
+          where: { id: inviteLinkRecord.id },
+          data: { trangThai: 'HET_HAN' },
+        });
+        throw new BadRequestException('Mã mời đã hết hạn');
+      }
+    }
+
     const displayName = this.normalizeText(dto.displayName) || user.hoTen || user.username || `Supplier ${user.telegramId}`;
     const supplier = await this.prisma.$transaction(async (tx) => {
       await this.ensureSupplierRole(tx, user.id);
 
-      return tx.nhaCungCap.upsert({
+      const createdSupplier = await tx.nhaCungCap.upsert({
         where: { telegramId: user.telegramId ?? undefined },
         create: {
           nguoiDungId: user.id,
@@ -63,6 +83,20 @@ export class SupplierOnboardingService {
           daXoa: false,
         },
       });
+
+      if (inviteLinkRecord) {
+        await tx.lienKetNhaCungCap.update({
+          where: { id: inviteLinkRecord.id },
+          data: {
+            nhaCungCapId: createdSupplier.id,
+            telegramIdDaGan: user.telegramId,
+            dungLuc: new Date(),
+            trangThai: 'DA_SU_DUNG',
+          },
+        });
+      }
+
+      return createdSupplier;
     });
 
     return {

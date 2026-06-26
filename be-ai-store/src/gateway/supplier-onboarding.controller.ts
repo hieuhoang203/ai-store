@@ -15,8 +15,8 @@ export class SupplierOnboardingController {
   }
 
   @Get('join')
-  join(@Res() response: Response) {
-    return response.redirect(302, this.supplierOnboardingService.getMiniAppRedirectUrl());
+  join(@Res() response: Response, @Query('token') token?: string) {
+    return response.redirect(302, this.supplierOnboardingService.getMiniAppRedirectUrl(token));
   }
 
   @Post('connect')

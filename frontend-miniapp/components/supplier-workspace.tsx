@@ -14,9 +14,11 @@ import { EmptyState } from "./empty-state";
 export function SupplierWorkspace({
   initData,
   requestToken,
+  inviteToken,
 }: {
   initData?: string;
   requestToken?: string | null;
+  inviteToken?: string | null;
 }) {
   const [connectResult, setConnectResult] = useState<SupplierConnectResult | null>(null);
   const [displayName, setDisplayName] = useState("");
@@ -32,7 +34,14 @@ export function SupplierWorkspace({
   });
 
   const connectMutation = useMutation({
-    mutationFn: () => connectSupplier({ initData: initData!, displayName, phone, email }),
+    mutationFn: () =>
+      connectSupplier({
+        initData: initData!,
+        displayName,
+        phone,
+        email,
+        token: inviteToken || undefined,
+      }),
     onSuccess: (result) => {
       setConnectResult(result);
       setMessage("Da ket noi nha cung cap thanh cong.");

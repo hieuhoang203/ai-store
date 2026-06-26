@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -6,6 +7,8 @@ import {
   Pencil,
   Search,
   Trash2,
+  Copy,
+  Check,
 } from "lucide-react";
 import type { EntityConfig, FieldConfig, ListResponse } from "@/app/_lib/admin-types";
 import { renderValue } from "@/app/_lib/admin-format";
@@ -76,6 +79,7 @@ export function EntityListView({
           </thead>
           <tbody>
             <TableBody
+              entity={entity}
               loading={loading}
               list={list}
               listFields={listFields}
@@ -115,7 +119,40 @@ export function EntityListView({
   );
 }
 
+function InviteLinkCell({ token }: { token: string }) {
+  const [copied, setCopied] = useState(false);
+  const inviteLink = `${
+    process.env.NEXT_PUBLIC_API_BASE_URL || "https://ai-store-lnin.onrender.com"
+  }/suppliers/join?token=${token}`;
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy!", err);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="font-mono text-xs max-w-40 truncate" title={inviteLink}>
+        {token}
+      </span>
+      <button
+        onClick={handleCopy}
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/20 transition cursor-pointer"
+        title="Sao chép Link mời"
+      >
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      </button>
+    </div>
+  );
+}
+
 function TableBody({
+  entity,
   loading,
   list,
   listFields,
@@ -123,6 +160,7 @@ function TableBody({
   onEdit,
   onDelete,
 }: {
+  entity?: EntityConfig;
   loading: boolean;
   list: ListResponse | null;
   listFields: FieldConfig[];
@@ -158,7 +196,11 @@ function TableBody({
     >
       {listFields.map((field) => (
         <td key={field.name} className="max-w-56 truncate px-4 py-3 text-sm text-zinc-200">
-          {renderValue(field, record[field.name])}
+          {entity?.key === "link-moi-nha-cung-cap" && field.name === "maToken" ? (
+            <InviteLinkCell token={String(record[field.name])} />
+          ) : (
+            renderValue(field, record[field.name])
+          )}
         </td>
       ))}
       <td className="px-4 py-3">

@@ -1,151 +1,117 @@
-import { BadRequestException } from '@nestjs/common';
-import { InventoryStatus } from '../../generated/prisma/client.js';
+import { Test, TestingModule } from '@nestjs/testing';
+import { TrangThaiTaiNguyen } from '../../generated/prisma/client.js';
 import { InventoriesService } from './inventories.service';
+import { PrismaService } from '../database/prisma.service';
 
-describe('InventoriesService reservation', () => {
-  const passwordService = {
-    encrypt: jest.fn((value) => value),
-    isEncrypted: jest.fn(() => true),
-  };
-  const notificationsService = {
-    announceVariantOutOfStock: jest.fn(),
-  };
-  const prisma = {
-    inventory: {
-      findMany: jest.fn(),
+describe('InventoriesService', () => {
+  let service: InventoriesService;
+
+  const mockPrismaService = {
+    taiNguyenGiaoHang: {
       updateMany: jest.fn(),
       count: jest.fn(),
     },
-    payment: {
-      findMany: jest.fn(),
+    nhaCungCapGoiDichVu: {
+      aggregate: jest.fn(),
     },
-    $transaction: jest.fn(),
+    goiDichVu: {
+      update: jest.fn(),
+    },
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        InventoriesService,
+        {
+          provide: PrismaService,
+          useValue: mockPrismaService,
+        },
+      ],
+    }).compile();
+
+    service = module.get<InventoriesService>(InventoriesService);
+  });
+
+  afterEach(() => {
     jest.clearAllMocks();
   });
 
-  it('reserves exactly the locked inventories', async () => {
-    const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([{ id: 'inventory-1' }, { id: 'inventory-2' }]),
-      inventory: {
-        updateMany: jest.fn().mockResolvedValue({ count: 2 }),
-      },
-    };
-    const service = new InventoriesService(prisma as any, passwordService as any, notificationsService as any);
-    const reservedUntil = new Date('2026-08-17T10:03:00.000Z');
+  describe('releaseExpiredReservations', () => {
+    it('releases expired reservations and returns the count', async () => {
+      const now = new Date();
+      mockPrismaService.taiNguyenGiaoHang.updateMany.mockResolvedValue({ count: 5 });
 
-    const ids = await service.reserveAvailableInventories(tx as any, {
-      variantId: '00000000-0000-0000-0000-000000000001',
-      quantity: 2,
-      userId: '00000000-0000-0000-0000-000000000002',
-      orderId: '00000000-0000-0000-0000-000000000003',
-      reservedUntil,
-    });
+      const result = await service.releaseExpiredReservations(now);
 
-    expect(ids).toEqual(['inventory-1', 'inventory-2']);
-    expect(tx.inventory.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ['inventory-1', 'inventory-2'] } },
-      data: {
-        status: InventoryStatus.RESERVED,
-        reservedBy: '00000000-0000-0000-0000-000000000002',
-        reservedAt: expect.any(Date),
-        reservedUntil,
-        reservedOrderId: '00000000-0000-0000-0000-000000000003',
-      },
+      expect(result).toBe(5);
+      expect(mockPrismaService.taiNguyenGiaoHang.updateMany).toHaveBeenCalledWith({
+        where: {
+          trangThai: TrangThaiTaiNguyen.DA_GIU,
+          giuDenLuc: { lt: now },
+          daXoa: false,
+        },
+        data: {
+          trangThai: TrangThaiTaiNguyen.SAN_SANG,
+          giuChoDonHangId: null,
+          giuChoNguoiDungId: null,
+          giuDenLuc: null,
+        },
+      });
     });
   });
 
-  it('fails without reserving partial inventory when locked rows are insufficient', async () => {
-    const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([{ id: 'inventory-1' }]),
-      inventory: {
-        updateMany: jest.fn(),
-      },
-    };
-    const service = new InventoriesService(prisma as any, passwordService as any, notificationsService as any);
+  describe('refreshVariantDisplayStock', () => {
+    it('calculates stock and updates variant display stock', async () => {
+      const mockTx = {
+        taiNguyenGiaoHang: {
+          count: jest.fn().mockResolvedValue(10),
+        },
+        nhaCungCapGoiDichVu: {
+          aggregate: jest.fn().mockResolvedValue({
+            _sum: { soLuongCoTheNhan: 15, soLuongDangGiu: 3 },
+          }),
+        },
+        goiDichVu: {
+          update: jest.fn().mockResolvedValue({}),
+        },
+      };
 
-    await expect(
-      service.reserveAvailableInventories(tx as any, {
-        variantId: '00000000-0000-0000-0000-000000000001',
-        quantity: 2,
-        userId: '00000000-0000-0000-0000-000000000002',
-        orderId: '00000000-0000-0000-0000-000000000003',
-        reservedUntil: new Date('2026-08-17T10:03:00.000Z'),
-      }),
-    ).rejects.toBeInstanceOf(BadRequestException);
+      await service.refreshVariantDisplayStock(mockTx as any, 'goi-dich-vu-1');
 
-    expect(tx.inventory.updateMany).not.toHaveBeenCalled();
-  });
-
-  it('releases expired reservations back to available inventory', async () => {
-    prisma.inventory.findMany.mockResolvedValue([
-      { id: 'inventory-1', reservedOrderId: 'order-1' },
-      { id: 'inventory-2', reservedOrderId: null },
-    ]);
-    prisma.payment.findMany.mockResolvedValue([]);
-    prisma.inventory.updateMany.mockResolvedValue({ count: 2 });
-    const service = new InventoriesService(prisma as any, passwordService as any, notificationsService as any);
-    const now = new Date('2026-08-17T10:03:01.000Z');
-
-    const releasedCount = await service.releaseExpiredReservations(now);
-
-    expect(releasedCount).toBe(2);
-    expect(prisma.inventory.findMany).toHaveBeenCalledWith({
-      where: {
-        status: InventoryStatus.RESERVED,
-        reservedUntil: { lt: now },
-        isDeleted: false,
-      },
-      select: { id: true, reservedOrderId: true },
-      take: 500,
-    });
-    expect(prisma.inventory.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ['inventory-1', 'inventory-2'] } },
-      data: {
-        status: InventoryStatus.AVAILABLE,
-        reservedBy: null,
-        reservedAt: null,
-        reservedUntil: null,
-        reservedOrderId: null,
-      },
+      expect(mockTx.taiNguyenGiaoHang.count).toHaveBeenCalledWith({
+        where: {
+          goiDichVuId: 'goi-dich-vu-1',
+          daXoa: false,
+          trangThai: TrangThaiTaiNguyen.SAN_SANG,
+        },
+      });
+      expect(mockTx.nhaCungCapGoiDichVu.aggregate).toHaveBeenCalledWith({
+        where: {
+          goiDichVuId: 'goi-dich-vu-1',
+          daXoa: false,
+          trangThai: 'DANG_HOAT_DONG',
+          nhaCungCap: { daXoa: false, trangThai: 'DANG_HOAT_DONG' },
+        },
+        _sum: { soLuongCoTheNhan: true, soLuongDangGiu: true },
+      });
+      expect(mockTx.goiDichVu.update).toHaveBeenCalledWith({
+        where: { id: 'goi-dich-vu-1' },
+        data: { tonHienThi: 22 },
+      });
     });
   });
 
-  it('does not release expired reservations that still have pending payments', async () => {
-    prisma.inventory.findMany.mockResolvedValue([{ id: 'inventory-1', reservedOrderId: 'order-1' }]);
-    prisma.payment.findMany.mockResolvedValue([{ orderId: 'order-1' }]);
-    const service = new InventoriesService(prisma as any, passwordService as any, notificationsService as any);
-
-    const releasedCount = await service.releaseExpiredReservations(new Date('2026-08-17T10:03:01.000Z'));
-
-    expect(releasedCount).toBe(0);
-    expect(prisma.inventory.updateMany).not.toHaveBeenCalled();
-  });
-
-  it('does not announce out of stock while inventory is reserved but unpaid', async () => {
-    prisma.inventory.count.mockResolvedValue(1);
-    const service = new InventoriesService(prisma as any, passwordService as any, notificationsService as any);
-
-    await service.announceOutOfStockIfNeeded('variant-1');
-
-    expect(prisma.inventory.count).toHaveBeenCalledWith({
-      where: {
-        variantId: 'variant-1',
-        status: { in: [InventoryStatus.AVAILABLE, InventoryStatus.RESERVED] },
-        isDeleted: false,
-      },
+  describe('announceOutOfStockIfNeeded', () => {
+    it('does nothing and resolves', async () => {
+      await expect(service.announceOutOfStockIfNeeded('goi-dich-vu-1')).resolves.toBeUndefined();
     });
-    expect(notificationsService.announceVariantOutOfStock).not.toHaveBeenCalled();
   });
 
-  it('announces out of stock only when no available or reserved inventory remains', async () => {
-    prisma.inventory.count.mockResolvedValue(0);
-    const service = new InventoriesService(prisma as any, passwordService as any, notificationsService as any);
-
-    await service.announceOutOfStockIfNeeded('variant-1');
-
-    expect(notificationsService.announceVariantOutOfStock).toHaveBeenCalledWith('variant-1');
+  describe('releaseReservationForOrder', () => {
+    it('returns 0', async () => {
+      const result = await service.releaseReservationForOrder('order-1');
+      expect(result).toBe(0);
+    });
   });
 });

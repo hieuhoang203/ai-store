@@ -20,6 +20,7 @@ import type { TabKey, ToastState } from "./mini-app-types";
 import { OrdersView } from "./orders-view";
 import { ProductGrid } from "./product-grid";
 import { ProfileView } from "./profile-view";
+import { SupplierWorkspace } from "./supplier-workspace";
 import { ToastBanner } from "./toast-banner";
 import { TopSummary } from "./top-summary";
 
@@ -44,6 +45,10 @@ export function MiniAppShell() {
   const [couponResult, setCouponResult] = useState<CouponValidationResult | null>(null);
   const [couponProcessing, setCouponProcessing] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
+  const [supplierMode, setSupplierMode] = useState<{ connect: boolean; requestToken: string | null }>({
+    connect: false,
+    requestToken: null,
+  });
   const { data: products = [], isLoading } = useQuery({ queryKey: ["products"], queryFn: getProducts });
   const { items, addItem, removeItem, updateQuantity, clear } = useCartStore();
   const { initData } = useTelegramUser();
@@ -68,6 +73,14 @@ export function MiniAppShell() {
   );
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const supplier = params.get("supplier") === "connect";
+    const requestToken = params.get("supplierRequest");
+    if (supplier || requestToken) {
+      setSupplierMode({ connect: supplier, requestToken });
+      return;
+    }
+
     const storedPaymentResult = window.sessionStorage.getItem(PAYMENT_RESULT_STORAGE_KEY);
     if (!storedPaymentResult) return;
 
@@ -78,6 +91,10 @@ export function MiniAppShell() {
       window.sessionStorage.removeItem(PAYMENT_RESULT_STORAGE_KEY);
     }
   }, []);
+
+  if (supplierMode.connect || supplierMode.requestToken) {
+    return <SupplierWorkspace initData={initData} requestToken={supplierMode.requestToken} />;
+  }
 
   useEffect(() => {
     const paymentId = paymentStatus?.payment.id;

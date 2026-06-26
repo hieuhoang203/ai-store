@@ -6,6 +6,7 @@ export type CartItem = {
   price: string;
   quantity: number;
   availableStock?: number;
+  customerInput?: Record<string, unknown>;
 };
 
 type CartStore = {

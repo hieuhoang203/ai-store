@@ -80,6 +80,7 @@ export class OrdersService {
                 soLuong: item.quantity,
                 donGia: goi.giaBan,
                 thanhTien: goi.giaBan.mul(item.quantity),
+                duLieuKhachNhap: item.customerInput,
               };
             }),
           },
@@ -262,9 +263,23 @@ export class OrdersService {
   }
 
   private normalizeItems(dto: CheckoutDto) {
-    const itemMap = new Map<string, number>();
-    for (const item of dto.items) itemMap.set(item.variantId, (itemMap.get(item.variantId) || 0) + item.quantity);
-    return Array.from(itemMap.entries()).map(([variantId, quantity]) => ({ variantId, quantity }));
+    const itemMap = new Map<string, { variantId: string; quantity: number; customerInput?: Prisma.InputJsonValue }>();
+    for (const item of dto.items) {
+      const current = itemMap.get(item.variantId);
+      const customerInput = this.normalizeCustomerInput(item.customerInput);
+      itemMap.set(item.variantId, {
+        variantId: item.variantId,
+        quantity: (current?.quantity || 0) + item.quantity,
+        customerInput: current?.customerInput || customerInput,
+      });
+    }
+    return Array.from(itemMap.values());
+  }
+
+  private normalizeCustomerInput(value?: Record<string, unknown>) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const entries = Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== '');
+    return entries.length ? Object.fromEntries(entries) as Prisma.InputJsonValue : undefined;
   }
 
   private createPayosOrderCode() {

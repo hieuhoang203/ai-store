@@ -21,6 +21,14 @@ export class ProductsRepository {
             trangThai: TrangThaiChung.DANG_HOAT_DONG,
             choPhepMua: true,
           },
+          include: {
+            phuongThuc: {
+              where: { daXoa: false, trangThai: TrangThaiChung.DANG_HOAT_DONG },
+              include: { phuongThuc: true },
+              orderBy: [{ laMacDinh: 'desc' }, { uuTien: 'asc' }, { taoLuc: 'asc' }],
+              take: 1,
+            },
+          },
           orderBy: [{ thuTu: 'asc' }, { taoLuc: 'asc' }],
         },
       },
@@ -78,6 +86,14 @@ export class ProductsRepository {
             trangThai: TrangThaiChung.DANG_HOAT_DONG,
             choPhepMua: true,
           },
+          include: {
+            phuongThuc: {
+              where: { daXoa: false, trangThai: TrangThaiChung.DANG_HOAT_DONG },
+              include: { phuongThuc: true },
+              orderBy: [{ laMacDinh: 'desc' }, { uuTien: 'asc' }, { taoLuc: 'asc' }],
+              take: 1,
+            },
+          },
           orderBy: [{ thuTu: 'asc' }, { taoLuc: 'asc' }],
         },
       },
@@ -92,6 +108,14 @@ export class ProductsRepository {
         loai: true,
         goiDichVu: {
           where: { daXoa: false, choPhepMua: true },
+          include: {
+            phuongThuc: {
+              where: { daXoa: false, trangThai: TrangThaiChung.DANG_HOAT_DONG },
+              include: { phuongThuc: true },
+              orderBy: [{ laMacDinh: 'desc' }, { uuTien: 'asc' }, { taoLuc: 'asc' }],
+              take: 1,
+            },
+          },
           orderBy: [{ thuTu: 'asc' }, { taoLuc: 'asc' }],
         },
       },

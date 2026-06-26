@@ -1,12 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import { ArrowLeft, Clock, PackageCheck, Plus, ShieldCheck, Star } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { type Product, type ProductVariant } from "@/features/products/product-service";
 import type { CartItem } from "@/store/cart-store";
 import { ProductDescription } from "./product-description";
 import { SectionTitle } from "./section-title";
+import { VariantCard } from "./variant-card";
 
 const text = {
   featured: "S\u1ea3n ph\u1ea9m n\u1ed5i b\u1eadt",
@@ -179,72 +180,6 @@ function ProductDetail({
   );
 }
 
-function VariantCard({
-  product,
-  variant,
-  index,
-  onAdd,
-}: {
-  product: Product;
-  variant: ProductVariant;
-  index: number;
-  onAdd: (item: CartItem) => void;
-}) {
-  const availableStock = variant.availableStock;
-  const outOfStock = availableStock !== undefined && availableStock <= 0;
-
-  return (
-    <article
-      className="mini-rise rounded-xl border border-white/10 bg-white/[0.045] p-3 shadow-lg shadow-black/20"
-      style={{ animationDelay: `${index * 34}ms` }}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="line-clamp-2 text-base font-bold leading-5 text-white">{variant.name}</h3>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {variant.durationDays ? (
-              <InfoPill icon={<Clock className="h-3 w-3" />} label={`${variant.durationDays} ${text.days}`} />
-            ) : null}
-            {variant.warrantyDays ? (
-              <InfoPill icon={<ShieldCheck className="h-3 w-3" />} label={`${variant.warrantyDays} ${text.days} ${text.warranty.toLowerCase()}`} />
-            ) : null}
-            <InfoPill icon={<PackageCheck className="h-3 w-3" />} label={getStockLabel(availableStock)} />
-            {variant.reviewCount ? (
-              <InfoPill icon={<Star className="h-3 w-3 fill-current" />} label={`${Number(variant.averageRating || 0).toFixed(1)} (${variant.reviewCount})`} />
-            ) : null}
-          </div>
-        </div>
-        <div className="shrink-0 text-right">
-          <p className="text-lg font-bold text-emerald-300">{formatMoney(variant.sellPrice)} đ</p>
-          <button
-            disabled={outOfStock}
-            onClick={() => onAdd({
-              variantId: variant.id,
-              name: `${product.name} - ${variant.name}`,
-              price: variant.sellPrice,
-              quantity: 1,
-              availableStock,
-            })}
-            className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-300 px-3 text-sm font-bold text-black transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
-          >
-            <Plus className="h-4 w-4" />
-            {outOfStock ? text.outOfStock : text.addPackage}
-          </button>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function InfoPill({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 text-[11px] font-bold text-zinc-300">
-      <span className="text-emerald-300">{icon}</span>
-      {label}
-    </span>
-  );
-}
-
 function formatPriceRange(variants: ProductVariant[]) {
   const prices = variants.map((variant) => Number(variant.sellPrice)).filter((price) => Number.isFinite(price));
   if (!prices.length) return "-";
@@ -257,11 +192,4 @@ function formatPriceRange(variants: ProductVariant[]) {
 
 function formatMoney(value: string | number) {
   return Number(value).toLocaleString("vi-VN");
-}
-
-function getStockLabel(availableStock?: number) {
-  if (availableStock === undefined) return text.instantDelivery;
-  if (availableStock <= 0) return text.outOfStock;
-  if (availableStock <= 3) return `${text.lowStock}, còn ${availableStock}`;
-  return `${text.stock} ${availableStock} - ${text.instantDelivery}`;
 }

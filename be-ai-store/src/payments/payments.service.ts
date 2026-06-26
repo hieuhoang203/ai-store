@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomBytes } from 'node:crypto';
 import {
   KieuPhuongThucGiaoHang,
   LoaiNguonGiaoHang,
@@ -11,6 +12,7 @@ import {
   TrangThaiYeuCauNhaCungCap,
 } from '../../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service';
+import { TelegramService } from '../telegram/telegram.service';
 import { PayosService } from './payos/payos.service';
 import { PayosWebhookBody } from './payos/payos.types';
 
@@ -25,6 +27,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly payosService: PayosService,
     private readonly configService: ConfigService,
+    private readonly telegramService: TelegramService,
   ) {}
 
   onModuleInit() {
@@ -245,15 +248,28 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     });
 
     for (const item of order.chiTiet) {
-      if (item.giaoHang.length >= item.soLuong) continue;
+      const deliveredCount = item.giaoHang.filter((delivery) => delivery.trangThai === TrangThaiGiaoHang.DA_GIAO).length;
+      const missingQuantity = Math.max(item.soLuong - deliveredCount, 0);
+      if (missingQuantity <= 0) continue;
       const kieu = item.goiPhuongThuc.phuongThuc.kieu;
 
       if (kieu === KieuPhuongThucGiaoHang.GUI_LINK) {
-        await this.deliverFromInternalResource(item.id, item.goiDichVuId, item.goiPhuongThucId);
+        for (let index = 0; index < missingQuantity; index += 1) {
+          const delivered = await this.deliverFromInternalResource(item.id, item.goiDichVuId, item.goiPhuongThucId);
+          if (!delivered) {
+            await this.createSupplierRequest(item.id, missingQuantity - index);
+            break;
+          }
+        }
         continue;
       }
 
-      await this.createSupplierRequest(item.id, item.soLuong);
+      if (kieu === KieuPhuongThucGiaoHang.NHAP_TAY) {
+        await this.createManualFulfillmentPlaceholder(item.id, missingQuantity, kieu);
+        continue;
+      }
+
+      await this.createSupplierRequest(item.id, missingQuantity);
     }
 
     const refreshed = await this.prisma.donHang.findUniqueOrThrow({
@@ -266,9 +282,23 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       0,
     );
 
+    const supplierRequests = await this.prisma.yeuCauNhaCungCap.count({
+      where: {
+        chiTietDonHang: { donHangId: orderId },
+        trangThai: { in: [TrangThaiYeuCauNhaCungCap.CHO_NHAN, TrangThaiYeuCauNhaCungCap.DA_NHAN, TrangThaiYeuCauNhaCungCap.DANG_XU_LY] },
+      },
+    });
+
     await this.prisma.donHang.update({
       where: { id: orderId },
-      data: { trangThai: delivered >= expected ? TrangThaiDonHang.DA_GIAO : TrangThaiDonHang.CHO_NHA_CUNG_CAP },
+      data: {
+        trangThai:
+          delivered >= expected
+            ? TrangThaiDonHang.DA_GIAO
+            : supplierRequests > 0
+              ? TrangThaiDonHang.CHO_NHA_CUNG_CAP
+              : TrangThaiDonHang.DANG_XU_LY,
+      },
     });
   }
 
@@ -284,8 +314,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (!resource) {
-      await this.createSupplierRequest(chiTietDonHangId, 1);
-      return;
+      return false;
     }
 
     const content = this.renderDeliveryContent(resource.duLieuCongKhai);
@@ -306,15 +335,17 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         },
       }),
     ]);
+    return true;
   }
 
   private async createSupplierRequest(chiTietDonHangId: string, quantity: number) {
+    if (quantity <= 0) return;
     const existing = await this.prisma.yeuCauNhaCungCap.count({ where: { chiTietDonHangId } });
     if (existing) return;
 
     const item = await this.prisma.chiTietDonHang.findUniqueOrThrow({
       where: { id: chiTietDonHangId },
-      include: { goiDichVu: true },
+      include: { goiDichVu: { include: { sanPham: true } }, donHang: true },
     });
     const supplier = await this.prisma.nhaCungCapGoiDichVu.findFirst({
       where: {
@@ -324,20 +355,75 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         trangThai: 'DANG_HOAT_DONG',
         nhaCungCap: { daXoa: false, trangThai: 'DANG_HOAT_DONG' },
       },
+      include: { nhaCungCap: true },
       orderBy: [{ uuTien: 'asc' }, { taoLuc: 'asc' }],
     });
     if (!supplier) return;
 
-    await this.prisma.yeuCauNhaCungCap.create({
+    const tokenForm = this.createSupplierRequestToken();
+    const request = await this.prisma.yeuCauNhaCungCap.create({
       data: {
         chiTietDonHangId,
         nhaCungCapId: supplier.nhaCungCapId,
         maYeuCau: `SUP${Date.now()}${Math.floor(Math.random() * 1000)}`,
         soLuong: quantity,
         duLieuGui: item.duLieuKhachNhap || undefined,
+        tokenForm,
+        guiLuc: new Date(),
         trangThai: TrangThaiYeuCauNhaCungCap.CHO_NHAN,
       },
     });
+
+    await this.notifySupplierRequest(supplier.nhaCungCap, request.maYeuCau, {
+      orderNo: item.donHang.maDonHang,
+      productName: item.goiDichVu.sanPham.tenSanPham,
+      variantName: item.goiDichVu.tenGoi,
+      quantity,
+      tokenForm,
+    });
+  }
+
+  private async createManualFulfillmentPlaceholder(chiTietDonHangId: string, quantity: number, type: KieuPhuongThucGiaoHang) {
+    const existing = await this.prisma.giaoHang.count({
+      where: { chiTietDonHangId, nguonGiaoHang: LoaiNguonGiaoHang.ADMIN_NHAP_TAY, trangThai: TrangThaiGiaoHang.CHO_GIAO, daXoa: false },
+    });
+    if (existing) return;
+
+    await this.prisma.giaoHang.create({
+      data: {
+        chiTietDonHangId,
+        nguonGiaoHang: LoaiNguonGiaoHang.ADMIN_NHAP_TAY,
+        noiDungGiao: `Cho admin nhap tay ${quantity} phan giao hang.`,
+        metadata: { type, expectedQuantity: quantity },
+        trangThai: TrangThaiGiaoHang.CHO_GIAO,
+      },
+    });
+  }
+
+  private async notifySupplierRequest(
+    supplier: { telegramId: bigint | null; usernameTelegram: string | null; tenHienThi: string },
+    requestCode: string,
+    context: { orderNo: string; productName: string; variantName: string; quantity: number; tokenForm: string },
+  ) {
+    if (!supplier.telegramId) return;
+    const miniAppUrl = this.configService.get<string>('TELEGRAM_MINIAPP_URL') || 'http://localhost:405';
+    const separator = miniAppUrl.includes('?') ? '&' : '?';
+    const requestUrl = `${miniAppUrl}${separator}supplierRequest=${context.tokenForm}`;
+    const message = [
+      `Yeu cau moi: ${requestCode}`,
+      `Don hang: ${context.orderNo}`,
+      `Dich vu: ${context.productName} - ${context.variantName}`,
+      `So luong: ${context.quantity}`,
+      `Xu ly tai: ${requestUrl}`,
+    ].join('\n');
+
+    await this.telegramService.sendMessage(supplier.telegramId, message).catch((error: Error) => {
+      this.logger.warn(`Cannot notify supplier ${supplier.tenHienThi}: ${error.message}`);
+    });
+  }
+
+  private createSupplierRequestToken() {
+    return randomBytes(24).toString('base64url');
   }
 
   private async syncPendingPayosPayment(paymentId: string) {

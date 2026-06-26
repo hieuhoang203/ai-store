@@ -76,6 +76,22 @@ export function CartView({
                       {getStockLabel(item.availableStock)}
                     </p>
                   ) : null}
+                  {item.customerInput && (
+                    <div className="mt-2.5 space-y-1 rounded-lg bg-black/30 p-2 text-[11px] text-zinc-400">
+                      {!!item.customerInput.email && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-zinc-500">Email:</span>
+                          <span className="font-mono text-zinc-300">{String(item.customerInput.email)}</span>
+                        </div>
+                      )}
+                      {!!item.customerInput.workspace && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-zinc-500">Workspace:</span>
+                          <span className="font-mono text-zinc-300">{String(item.customerInput.workspace)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <button
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-400/20 bg-red-400/10 text-red-300"

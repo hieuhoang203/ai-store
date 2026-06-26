@@ -15,6 +15,7 @@ import { PrismaService } from '../database/prisma.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { PayosService } from './payos/payos.service';
 import { PayosWebhookBody } from './payos/payos.types';
+import { InventoryPasswordService } from '../inventories/inventory-password.service';
 
 export const PAYMENT_QR_TTL_MS = 3 * 60 * 1000;
 
@@ -28,6 +29,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     private readonly payosService: PayosService,
     private readonly configService: ConfigService,
     private readonly telegramService: TelegramService,
+    private readonly inventoryPasswordService: InventoryPasswordService,
   ) {}
 
   onModuleInit() {
@@ -257,8 +259,11 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         for (let index = 0; index < missingQuantity; index += 1) {
           const delivered = await this.deliverFromInternalResource(item.id, item.goiDichVuId, item.goiPhuongThucId);
           if (!delivered) {
-            await this.createSupplierRequest(item.id, missingQuantity - index);
-            break;
+            const deliveredFromConfig = await this.deliverFromConfigLink(item.id, item.goiPhuongThuc);
+            if (!deliveredFromConfig) {
+              await this.createSupplierRequest(item.id, missingQuantity - index);
+              break;
+            }
           }
         }
         continue;
@@ -335,6 +340,83 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         },
       }),
     ]);
+    return true;
+  }
+
+  private async deliverFromConfigLink(chiTietDonHangId: string, goiPhuongThuc: any) {
+    if (!goiPhuongThuc || !goiPhuongThuc.cauHinh || typeof goiPhuongThuc.cauHinh !== 'object' || Array.isArray(goiPhuongThuc.cauHinh)) {
+      return false;
+    }
+
+    const config = goiPhuongThuc.cauHinh as Record<string, any>;
+    const rawLink = typeof config.inviteLink === 'string' ? config.inviteLink : null;
+    const encryptedLink = typeof config.encryptedInviteLink === 'string' ? config.encryptedInviteLink : null;
+
+    if (!rawLink && !encryptedLink) {
+      return false;
+    }
+
+    // Check usage limits
+    const maxUses = config.maxUses !== undefined && config.maxUses !== null ? Number(config.maxUses) : null;
+    const usedCount = config.usedCount !== undefined && config.usedCount !== null ? Number(config.usedCount) : 0;
+    const remainingUses = config.remainingUses !== undefined && config.remainingUses !== null ? Number(config.remainingUses) : null;
+
+    if (maxUses !== null && usedCount >= maxUses) {
+      return false;
+    }
+    if (remainingUses !== null && remainingUses <= 0) {
+      return false;
+    }
+
+    // Determine or generate encrypted invite link
+    let finalEncryptedLink = encryptedLink;
+    let configUpdated = false;
+
+    if (rawLink && !encryptedLink) {
+      finalEncryptedLink = this.inventoryPasswordService.encrypt(rawLink) || null;
+      config.encryptedInviteLink = finalEncryptedLink;
+      delete config.inviteLink;
+      configUpdated = true;
+    }
+
+    // Update uses
+    const newUsedCount = usedCount + 1;
+    config.usedCount = newUsedCount;
+    if (remainingUses !== null) {
+      config.remainingUses = Math.max(remainingUses - 1, 0);
+    }
+    configUpdated = true;
+
+    // Save configuration updates back to DB
+    await this.prisma.goiPhuongThucGiaoHang.update({
+      where: { id: goiPhuongThuc.id },
+      data: { cauHinh: config },
+    });
+
+    // Generate random gatewayToken
+    const gatewayToken = randomBytes(24).toString('hex');
+    const publicUrl = this.configService.get<string>('APP_PUBLIC_URL') || 'http://localhost:8903';
+    const gatewayUrl = `${publicUrl.replace(/\/$/, '')}/join/${gatewayToken}`;
+
+    // Create the delivery (GiaoHang) record
+    await this.prisma.giaoHang.create({
+      data: {
+        chiTietDonHangId,
+        nguonGiaoHang: LoaiNguonGiaoHang.KHO_NOI_BO,
+        noiDungGiao: `Link nhận dịch vụ: ${gatewayUrl}`,
+        duLieuGiao: { gatewayUrl },
+        metadata: {
+          type: KieuPhuongThucGiaoHang.GUI_LINK,
+          gatewayToken,
+          encryptedInviteLink: finalEncryptedLink,
+          maxAccess: 3,
+          usedCount: 0,
+        },
+        giaoLuc: new Date(),
+        trangThai: TrangThaiGiaoHang.DA_GIAO,
+      },
+    });
+
     return true;
   }
 

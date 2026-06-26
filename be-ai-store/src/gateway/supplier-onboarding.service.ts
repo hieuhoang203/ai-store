@@ -11,6 +11,7 @@ import { AuthService } from '../auth/auth.service';
 import { PrismaService } from '../database/prisma.service';
 import { DeliveriesService } from '../deliveries/deliveries.service';
 import { SupplierConnectDto, SupplierFulfillRequestDto } from './dto/supplier-onboarding.dto';
+import { TelegramService } from '../telegram/telegram.service';
 
 @Injectable()
 export class SupplierOnboardingService {
@@ -19,6 +20,7 @@ export class SupplierOnboardingService {
     private readonly configService: ConfigService,
     private readonly deliveriesService: DeliveriesService,
     private readonly prisma: PrismaService,
+    private readonly telegramService: TelegramService,
   ) {}
 
   getFixedInviteLink() {
@@ -30,6 +32,11 @@ export class SupplierOnboardingService {
     const miniAppUrl = this.configService.get<string>('TELEGRAM_MINIAPP_URL') || 'http://localhost:405';
     const separator = miniAppUrl.includes('?') ? '&' : '?';
     return `${miniAppUrl}${separator}supplier=connect${token ? `&token=${token}` : ''}`;
+  }
+
+  getTelegramBotRedirectUrl(token?: string) {
+    const botUsername = this.telegramService.getBotUsername();
+    return `https://t.me/${botUsername}?start=connect_${token || ''}`;
   }
 
   async connect(dto: SupplierConnectDto) {

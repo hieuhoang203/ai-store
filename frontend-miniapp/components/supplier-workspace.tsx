@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, Send, UserRound } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   connectSupplier,
   fulfillSupplierRequest,
@@ -49,6 +49,19 @@ export function SupplierWorkspace({
     onError: (error) => setMessage(error instanceof Error ? error.message : "Khong the ket noi nha cung cap."),
   });
 
+  useEffect(() => {
+    if (
+      initData &&
+      inviteToken &&
+      !connectResult &&
+      !connectMutation.isPending &&
+      !connectMutation.isSuccess &&
+      !connectMutation.isError
+    ) {
+      connectMutation.mutate();
+    }
+  }, [initData, inviteToken, connectResult, connectMutation]);
+
   const fulfillMutation = useMutation({
     mutationFn: () => fulfillSupplierRequest(requestToken!, { initData: initData!, payload: parsePayload(payloadText) }),
     onSuccess: () => setMessage("Da gui ket qua cho don hang."),
@@ -75,30 +88,50 @@ export function SupplierWorkspace({
           </div>
         </header>
 
-        <section className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
-          <div className="space-y-3">
-            <Field label="Ten hien thi" value={displayName} onChange={setDisplayName} placeholder="Ten shop/doi tac" />
-            <Field label="So dien thoai" value={phone} onChange={setPhone} placeholder="090..." />
-            <Field label="Email" value={email} onChange={setEmail} placeholder="supplier@example.com" />
-            <button
-              type="button"
-              onClick={() => connectMutation.mutate()}
-              disabled={connectMutation.isPending}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-300 text-sm font-bold text-black disabled:opacity-60"
-            >
-              {connectMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              Ket noi
-            </button>
-          </div>
-
-          {connectResult ? (
-            <div className="mt-4 rounded-lg border border-emerald-300/20 bg-emerald-300/10 p-3 text-sm text-emerald-100">
-              <p className="font-bold">{connectResult.supplier.displayName}</p>
-              <p className="mt-1 break-words">@{connectResult.supplier.username || "-"}</p>
-              <p className="mt-1 break-words">Telegram ID: {connectResult.supplier.telegramId || "-"}</p>
+        {inviteToken && connectResult ? (
+          <section className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-5 text-center space-y-3">
+            <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-300 animate-bounce" />
+            <h2 className="text-xl font-bold text-white">Tham gia thành công!</h2>
+            <p className="text-sm text-zinc-300 leading-5">
+              Tài khoản Telegram của bạn đã được kết nối với nhà cung cấp.
+            </p>
+            <div className="rounded-lg bg-black/35 p-3 text-left text-xs font-mono text-emerald-200/90 space-y-1">
+              <p>Nhà cung cấp: {connectResult.supplier.displayName}</p>
+              <p>Telegram: @{connectResult.supplier.username || "-"}</p>
+              <p>ID: {connectResult.supplier.telegramId}</p>
             </div>
-          ) : null}
-        </section>
+          </section>
+        ) : inviteToken && connectMutation.isPending ? (
+          <section className="rounded-2xl border border-white/10 bg-white/[0.045] p-6 text-center space-y-4">
+            <Loader2 className="mx-auto h-10 w-10 animate-spin text-emerald-300" />
+            <p className="text-sm text-zinc-400">Đang liên kết tài khoản nhà cung cấp...</p>
+          </section>
+        ) : (
+          <section className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+            <div className="space-y-3">
+              <Field label="Ten hien thi" value={displayName} onChange={setDisplayName} placeholder="Ten shop/doi tac" />
+              <Field label="So dien thoai" value={phone} onChange={setPhone} placeholder="090..." />
+              <Field label="Email" value={email} onChange={setEmail} placeholder="supplier@example.com" />
+              <button
+                type="button"
+                onClick={() => connectMutation.mutate()}
+                disabled={connectMutation.isPending}
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-300 text-sm font-bold text-black disabled:opacity-60"
+              >
+                {connectMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Ket noi
+              </button>
+            </div>
+
+            {connectResult ? (
+              <div className="mt-4 rounded-lg border border-emerald-300/20 bg-emerald-300/10 p-3 text-sm text-emerald-100">
+                <p className="font-bold">{connectResult.supplier.displayName}</p>
+                <p className="mt-1 break-words">@{connectResult.supplier.username || "-"}</p>
+                <p className="mt-1 break-words">Telegram ID: {connectResult.supplier.telegramId || "-"}</p>
+              </div>
+            ) : null}
+          </section>
+        )}
 
         {requestToken ? (
           <section className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">

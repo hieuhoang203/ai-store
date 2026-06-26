@@ -16,7 +16,7 @@ export class SupplierOnboardingController {
 
   @Get('join')
   join(@Res() response: Response, @Query('token') token?: string) {
-    return response.redirect(302, this.supplierOnboardingService.getMiniAppRedirectUrl(token));
+    return response.redirect(302, this.supplierOnboardingService.getTelegramBotRedirectUrl(token));
   }
 
   @Post('connect')

@@ -5,6 +5,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { AdminEntityConfig, AdminFieldConfig, AdminListQuery } from '../interfaces/admin-crud.interface';
 import { ADMIN_ENTITIES, ADMIN_ENTITY_MAP } from '../models/admin-entity.model';
 import { AdminRepository } from '../repositories/admin.repository';
+import { InventoryPasswordService } from '../../inventories/inventory-password.service';
 
 type UploadedImageFile = {
   buffer: Buffer;
@@ -18,6 +19,7 @@ export class AdminService {
   constructor(
     private readonly repository: AdminRepository,
     private readonly prisma: PrismaService,
+    private readonly inventoryPasswordService: InventoryPasswordService,
   ) {}
 
   async getEntities() {
@@ -63,6 +65,22 @@ export class AdminService {
       }
     }
 
+    if (entityKey === 'goi-phuong-thuc' && data.cauHinh && typeof data.cauHinh === 'object' && !Array.isArray(data.cauHinh)) {
+      const configObj = data.cauHinh as Record<string, unknown>;
+      if (typeof configObj.inviteLink === 'string' && configObj.inviteLink) {
+        configObj.encryptedInviteLink = this.inventoryPasswordService.encrypt(configObj.inviteLink);
+        delete configObj.inviteLink;
+      }
+    }
+
+    if (entityKey === 'phuong-thuc-giao-hang' && data.cauHinhMacDinh && typeof data.cauHinhMacDinh === 'object' && !Array.isArray(data.cauHinhMacDinh)) {
+      const configObj = data.cauHinhMacDinh as Record<string, unknown>;
+      if (typeof configObj.inviteLink === 'string' && configObj.inviteLink) {
+        configObj.encryptedInviteLink = this.inventoryPasswordService.encrypt(configObj.inviteLink);
+        delete configObj.inviteLink;
+      }
+    }
+
     const record = await this.repository.create(config, data);
     return this.serializeRecord(config, record);
   }
@@ -70,6 +88,23 @@ export class AdminService {
   async update(entityKey: string, recordId: string, payload: Record<string, unknown>) {
     const config = this.getConfig(entityKey);
     const data = this.sanitizePayload(config, payload, 'update');
+
+    if (entityKey === 'goi-phuong-thuc' && data.cauHinh && typeof data.cauHinh === 'object' && !Array.isArray(data.cauHinh)) {
+      const configObj = data.cauHinh as Record<string, unknown>;
+      if (typeof configObj.inviteLink === 'string' && configObj.inviteLink) {
+        configObj.encryptedInviteLink = this.inventoryPasswordService.encrypt(configObj.inviteLink);
+        delete configObj.inviteLink;
+      }
+    }
+
+    if (entityKey === 'phuong-thuc-giao-hang' && data.cauHinhMacDinh && typeof data.cauHinhMacDinh === 'object' && !Array.isArray(data.cauHinhMacDinh)) {
+      const configObj = data.cauHinhMacDinh as Record<string, unknown>;
+      if (typeof configObj.inviteLink === 'string' && configObj.inviteLink) {
+        configObj.encryptedInviteLink = this.inventoryPasswordService.encrypt(configObj.inviteLink);
+        delete configObj.inviteLink;
+      }
+    }
+
     const record = await this.repository.update(config, recordId, data);
     return this.serializeRecord(config, record);
   }
@@ -251,10 +286,30 @@ export class AdminService {
     throw new BadRequestException(`${field.label} is required`);
   }
 
+  private decryptConfigInRecord(entityKey: string, record: any) {
+    if (!record) return record;
+
+    if (entityKey === 'goi-phuong-thuc' && record.cauHinh && typeof record.cauHinh === 'object') {
+      const configObj = record.cauHinh as Record<string, unknown>;
+      if (typeof configObj.encryptedInviteLink === 'string' && configObj.encryptedInviteLink) {
+        configObj.inviteLink = this.inventoryPasswordService.decrypt(configObj.encryptedInviteLink);
+      }
+    }
+
+    if (entityKey === 'phuong-thuc-giao-hang' && record.cauHinhMacDinh && typeof record.cauHinhMacDinh === 'object') {
+      const configObj = record.cauHinhMacDinh as Record<string, unknown>;
+      if (typeof configObj.encryptedInviteLink === 'string' && configObj.encryptedInviteLink) {
+        configObj.inviteLink = this.inventoryPasswordService.decrypt(configObj.encryptedInviteLink);
+      }
+    }
+
+    return record;
+  }
+
   private serializeRecord(config: AdminEntityConfig, record: unknown) {
     const serialized = this.serialize(record) as Record<string, unknown>;
     serialized.__recordId = serialized[config.idField || 'id'];
-    return serialized;
+    return this.decryptConfigInRecord(config.key, serialized);
   }
 
   private serialize(value: unknown): unknown {

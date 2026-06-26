@@ -22,20 +22,35 @@ export class InventoryPasswordService {
       iv.toString('hex'),
       tag.toString('hex'),
       encrypted.toString('hex'),
+
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', this.getKey(), iv);
+    const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+    const tag = cipher.getAuthTag();
+
+    return [
+      ENCRYPTED_PREFIX,
+      iv.toString('hex'),
+      tag.toString('hex'),
+      encrypted.toString('hex'),
     ].join(':');
   }
 
   decrypt(value: string | null | undefined) {
     if (!value || !this.isEncrypted(value)) return value || '';
 
-    const [, ivHex, tagHex, encryptedHex] = value.split(':');
-    const decipher = createDecipheriv('aes-256-gcm', this.getKey(), Buffer.from(ivHex, 'hex'));
-    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+    try {
+      const [, ivHex, tagHex, encryptedHex] = value.split(':');
+      const decipher = createDecipheriv('aes-256-gcm', this.getKey(), Buffer.from(ivHex, 'hex'));
+      decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
 
-    return Buffer.concat([
-      decipher.update(Buffer.from(encryptedHex, 'hex')),
-      decipher.final(),
-    ]).toString('utf8');
+      return Buffer.concat([
+        decipher.update(Buffer.from(encryptedHex, 'hex')),
+        decipher.final(),
+      ]).toString('utf8');
+    } catch {
+      return '';
+    }
   }
 
   isEncrypted(value: string | null | undefined) {

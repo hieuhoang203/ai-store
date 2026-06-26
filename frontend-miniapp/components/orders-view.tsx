@@ -721,9 +721,9 @@ function ReviewModal({
 }
 
 function formatStatus(status: string, paymentStatus: string) {
-  if (status === "DELIVERED") return "Hoàn thành";
-  if (paymentStatus === "PAID") return "Đã thanh toán";
-  if (paymentStatus === "FAILED" || status === "CANCELLED") return "Đã hủy";
+  if (status === "DELIVERED" || status === "DA_GIAO" || status === "HOAN_THANH") return "Hoàn thành";
+  if (paymentStatus === "PAID" || paymentStatus === "DA_THANH_TOAN") return "Đã thanh toán";
+  if (paymentStatus === "FAILED" || paymentStatus === "THAT_BAI" || status === "CANCELLED" || status === "DA_HUY") return "Đã hủy";
   return "Chờ thanh toán";
 }
 

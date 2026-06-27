@@ -1,7 +1,11 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Markup, Telegraf } from 'telegraf';
-import { VaiTroHeThong } from '../../generated/prisma/client.js';
+import {
+  NhaCungCapTrangThai,
+  TrangThaiLienKetNhaCungCap,
+  VaiTroHeThong,
+} from '../../generated/prisma/client.js';
 import { AuthService } from '../auth/auth.service';
 import { PrismaService } from '../database/prisma.service';
 
@@ -60,6 +64,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
   private registerCommands(bot: Telegraf) {
     bot.start(async (context) => {
+      const startPayload = this.getStartPayload(context);
+      if (startPayload?.startsWith('supplier_')) {
+        await this.handleSupplierInvite(context, startPayload.replace(/^supplier_/, ''));
+        return;
+      }
+
       await this.syncTelegramProfile(context.from);
       await this.replyStartMenu(context);
     });
@@ -96,11 +106,124 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      await this.ensureAdminRole(user.id);
+      await this.ensureRole(user.id, VaiTroHeThong.ADMIN);
       const token = await this.authService.createAdminLoginToken(user.id);
       const adminUrl = this.configService.getOrThrow<string>('ADMIN_APP_URL');
       await context.reply(`${adminUrl}/auth/login?token=${token}`);
     });
+  }
+
+  private getStartPayload(context: unknown) {
+    const directPayload = (context as { startPayload?: unknown }).startPayload;
+    if (typeof directPayload === 'string' && directPayload.trim()) return directPayload.trim();
+
+    const text = (context as { message?: { text?: unknown } }).message?.text;
+    if (typeof text !== 'string') return null;
+    const [, payload] = text.trim().split(/\s+/, 2);
+    return payload || null;
+  }
+
+  private async handleSupplierInvite(
+    context: {
+      from?: { id: number; username?: string; first_name?: string; last_name?: string };
+      reply: (...args: any[]) => unknown;
+    },
+    token: string,
+  ) {
+    if (!context.from?.id) {
+      await context.reply('Không xác định được tài khoản Telegram của bạn.');
+      return;
+    }
+
+    const link = await this.prisma.lienKetNhaCungCap.findUnique({
+      where: { maToken: token },
+      include: { nhaCungCap: true },
+    });
+    if (!link) {
+      await context.reply('Link mời nhà cung cấp không tồn tại hoặc đã bị thu hồi.');
+      return;
+    }
+    if (link.trangThai !== TrangThaiLienKetNhaCungCap.CHUA_SU_DUNG) {
+      await context.reply('Link mời này đã được sử dụng hoặc không còn hiệu lực.');
+      return;
+    }
+    if (link.hetHanLuc && link.hetHanLuc.getTime() <= Date.now()) {
+      await this.prisma.lienKetNhaCungCap.update({
+        where: { id: link.id },
+        data: { trangThai: TrangThaiLienKetNhaCungCap.HET_HAN },
+      });
+      await context.reply('Link mời này đã hết hạn.');
+      return;
+    }
+
+    const user = await this.authService.upsertTelegramUserProfile({
+      id: context.from.id,
+      username: context.from.username,
+      firstName: context.from.first_name,
+      lastName: context.from.last_name,
+    });
+    const telegramId = BigInt(context.from.id);
+    const displayName =
+      user.hoTen ||
+      context.from.username ||
+      link.tenMoi ||
+      `Supplier ${telegramId.toString()}`;
+
+    const supplier = await this.prisma.$transaction(async (tx) => {
+      const existing =
+        link.nhaCungCapId
+          ? await tx.nhaCungCap.findUnique({ where: { id: link.nhaCungCapId } })
+          : await tx.nhaCungCap.findFirst({
+              where: {
+                OR: [{ telegramId }, { nguoiDungId: user.id }],
+              },
+            });
+
+      const savedSupplier = existing
+        ? await tx.nhaCungCap.update({
+            where: { id: existing.id },
+            data: {
+              nguoiDungId: user.id,
+              telegramId,
+              usernameTelegram: context.from?.username,
+              tenHienThi: existing.tenHienThi || displayName,
+              trangThai: NhaCungCapTrangThai.DANG_HOAT_DONG,
+            },
+          })
+        : await tx.nhaCungCap.create({
+            data: {
+              nguoiDungId: user.id,
+              telegramId,
+              usernameTelegram: context.from?.username,
+              tenHienThi: displayName,
+              trangThai: NhaCungCapTrangThai.DANG_HOAT_DONG,
+            },
+          });
+
+      await tx.lienKetNhaCungCap.update({
+        where: { id: link.id },
+        data: {
+          nhaCungCapId: savedSupplier.id,
+          telegramIdDaGan: telegramId,
+          dungLuc: new Date(),
+          trangThai: TrangThaiLienKetNhaCungCap.DA_SU_DUNG,
+        },
+      });
+
+      return savedSupplier;
+    });
+
+    await this.ensureRole(user.id, VaiTroHeThong.NHA_CUNG_CAP);
+    await context.reply(
+      [
+        'Kết nối nhà cung cấp thành công.',
+        '',
+        `Tên hiển thị: ${supplier.tenHienThi}`,
+        `Telegram ID: ${telegramId.toString()}`,
+        '',
+        'Từ bây giờ hệ thống có thể gửi yêu cầu xử lý đơn hàng tới tài khoản Telegram này.',
+      ].join('\n'),
+    );
   }
 
   private async syncTelegramProfile(from?: { id: number; username?: string; first_name?: string; last_name?: string }) {
@@ -113,10 +236,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private async ensureAdminRole(userId: string) {
+  private async ensureRole(userId: string, roleName: VaiTroHeThong) {
     const role = await this.prisma.vaiTro.upsert({
-      where: { ten: VaiTroHeThong.ADMIN },
-      create: { ten: VaiTroHeThong.ADMIN },
+      where: { ten: roleName },
+      create: { ten: roleName },
       update: {},
     });
     await this.prisma.nguoiDungVaiTro.upsert({

@@ -11,6 +11,7 @@ import {
   TrangThaiYeuCauNhaCungCap,
 } from '../../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service';
+import { TelegramService } from '../telegram/telegram.service';
 import { PayosService } from './payos/payos.service';
 import { PayosWebhookBody } from './payos/payos.types';
 
@@ -25,6 +26,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly payosService: PayosService,
     private readonly configService: ConfigService,
+    private readonly telegramService: TelegramService,
   ) {}
 
   onModuleInit() {
@@ -196,7 +198,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     const deliveries = payment.donHang.chiTiet.flatMap((item) =>
       item.giaoHang.map((delivery) => ({
         id: delivery.id,
-        status: delivery.trangThai,
+        status: this.mapDeliveryStatus(delivery.trangThai),
         deliveredAt: delivery.giaoLuc,
         content: delivery.noiDungGiao,
         productName: item.goiDichVu.sanPham.tenSanPham,
@@ -207,15 +209,15 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     return {
       payment: {
         id: payment.id,
-        status: payment.trangThai,
+        status: this.mapPaymentStatus(payment.trangThai),
         paidAt: payment.thanhToanLuc,
         expiresAt: this.getPaymentExpiresAt(payment.duLieuQr),
       },
       order: {
         id: payment.donHang.id,
         orderNo: payment.donHang.maDonHang,
-        status: payment.donHang.trangThai,
-        paymentStatus: payment.donHang.trangThaiThanhToan,
+        status: this.mapOrderStatus(payment.donHang.trangThai),
+        paymentStatus: this.mapPaymentStatus(payment.donHang.trangThaiThanhToan),
       },
       deliveries,
       deliveryMessage: deliveries.map((delivery) => delivery.content).filter(Boolean).join('\n\n') || null,
@@ -325,10 +327,11 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         nhaCungCap: { daXoa: false, trangThai: 'DANG_HOAT_DONG' },
       },
       orderBy: [{ uuTien: 'asc' }, { taoLuc: 'asc' }],
+      include: { nhaCungCap: true },
     });
     if (!supplier) return;
 
-    await this.prisma.yeuCauNhaCungCap.create({
+    const request = await this.prisma.yeuCauNhaCungCap.create({
       data: {
         chiTietDonHangId,
         nhaCungCapId: supplier.nhaCungCapId,
@@ -338,6 +341,20 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         trangThai: TrangThaiYeuCauNhaCungCap.CHO_NHAN,
       },
     });
+
+    if (supplier.nhaCungCap.telegramId) {
+      await this.telegramService.sendMessage(
+        supplier.nhaCungCap.telegramId,
+        [
+          'Bạn có yêu cầu xử lý đơn hàng mới.',
+          '',
+          `Mã yêu cầu: ${request.maYeuCau}`,
+          `Số lượng: ${request.soLuong}`,
+          '',
+          'Vui lòng mở trang/form dành cho nhà cung cấp để nhận và trả kết quả.',
+        ].join('\n'),
+      );
+    }
   }
 
   private async syncPendingPayosPayment(paymentId: string) {
@@ -443,5 +460,37 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     return Object.entries(value)
       .map(([key, item]) => `${key}: ${String(item ?? '')}`)
       .join('\n');
+  }
+
+  private mapPaymentStatus(status: TrangThaiThanhToan) {
+    const map: Record<TrangThaiThanhToan, string> = {
+      CHO_THANH_TOAN: 'PENDING',
+      DA_THANH_TOAN: 'PAID',
+      THAT_BAI: 'FAILED',
+      DA_HOAN_TIEN: 'REFUNDED',
+    };
+    return map[status];
+  }
+
+  private mapOrderStatus(status: TrangThaiDonHang) {
+    const map: Record<TrangThaiDonHang, string> = {
+      CHO_THANH_TOAN: 'PENDING_PAYMENT',
+      DA_THANH_TOAN: 'PAID',
+      CHO_NHA_CUNG_CAP: 'WAITING_SUPPLIER',
+      DANG_XU_LY: 'FULFILLING',
+      DA_GIAO: 'DELIVERED',
+      HOAN_THANH: 'COMPLETED',
+      DA_HUY: 'CANCELLED',
+    };
+    return map[status];
+  }
+
+  private mapDeliveryStatus(status: TrangThaiGiaoHang) {
+    const map: Record<TrangThaiGiaoHang, string> = {
+      CHO_GIAO: 'PENDING',
+      DA_GIAO: 'DELIVERED',
+      THAT_BAI: 'FAILED',
+    };
+    return map[status];
   }
 }

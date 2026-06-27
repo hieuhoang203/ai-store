@@ -132,8 +132,8 @@ export class OrdersService {
       data: orders.map((order) => ({
         id: order.id,
         orderNo: order.maDonHang,
-        status: order.trangThai,
-        paymentStatus: order.trangThaiThanhToan,
+        status: this.mapOrderStatus(order.trangThai),
+        paymentStatus: this.mapPaymentStatus(order.trangThaiThanhToan),
         totalAmount: order.tongTien.toString(),
         createdAt: order.taoLuc,
         quantity: order.chiTiet.reduce((sum, item) => sum + item.soLuong, 0),
@@ -176,8 +176,8 @@ export class OrdersService {
     return {
       id: order.id,
       orderNo: order.maDonHang,
-      status: order.trangThai,
-      paymentStatus: order.trangThaiThanhToan,
+      status: this.mapOrderStatus(order.trangThai),
+      paymentStatus: this.mapPaymentStatus(order.trangThaiThanhToan),
       totalAmount: order.tongTien.toString(),
       subtotal: order.tamTinh.toString(),
       discount: order.giamGia.toString(),
@@ -288,7 +288,7 @@ export class OrdersService {
       id: rest.id,
       amount: rest.soTien,
       paymentContent: rest.noiDungThanhToan,
-      status: rest.trangThai,
+      status: this.mapPaymentStatus(rest.trangThai as TrangThaiThanhToan),
       qrContent: duLieuQr,
     };
   }
@@ -312,5 +312,28 @@ export class OrdersService {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
     const record = value as Record<string, unknown>;
     return typeof record.gatewayUrl === 'string' ? record.gatewayUrl : null;
+  }
+
+  private mapPaymentStatus(status: TrangThaiThanhToan) {
+    const map: Record<TrangThaiThanhToan, string> = {
+      CHO_THANH_TOAN: 'PENDING',
+      DA_THANH_TOAN: 'PAID',
+      THAT_BAI: 'FAILED',
+      DA_HOAN_TIEN: 'REFUNDED',
+    };
+    return map[status];
+  }
+
+  private mapOrderStatus(status: TrangThaiDonHang) {
+    const map: Record<TrangThaiDonHang, string> = {
+      CHO_THANH_TOAN: 'PENDING_PAYMENT',
+      DA_THANH_TOAN: 'PAID',
+      CHO_NHA_CUNG_CAP: 'WAITING_SUPPLIER',
+      DANG_XU_LY: 'FULFILLING',
+      DA_GIAO: 'DELIVERED',
+      HOAN_THANH: 'COMPLETED',
+      DA_HUY: 'CANCELLED',
+    };
+    return map[status];
   }
 }

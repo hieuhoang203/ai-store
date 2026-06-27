@@ -31,39 +31,41 @@ export type DeliveryMessagePayload = {
 
 export function renderDeliveryMessage(payload: DeliveryMessagePayload) {
   return [
-    '🎉 ĐẶT HÀNG THÀNH CÔNG 🎉',
+    '✨ AI STORE ĐÃ GIAO DỊCH VỤ ✨',
     '',
-    `💳 Mã đơn hàng: ${renderValue(payload.orderCode)}`,
+    'Cảm ơn bạn đã tin tưởng AI Store. Mình gửi thông tin nhận dịch vụ ngay bên dưới nhé.',
     '',
-    '▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬',
+    `🧾 Mã đơn hàng: ${renderValue(payload.orderCode)}`,
     '',
+    '━━━━━━━━━━━━━━━━━━━━',
     ...payload.products.flatMap(renderProduct),
-    '▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬',
+    '━━━━━━━━━━━━━━━━━━━━',
     '',
-    '☎️ Kênh hỗ trợ:',
-    `✈️ Telegram: ${renderValue(payload.support.telegram)}`,
-    `💬 Zalo: ${renderValue(payload.support.zalo)}`,
+    '🛟 Cần hỗ trợ cứ nhắn mình:',
+    `💬 Telegram: ${renderValue(payload.support.telegram)}`,
+    `📱 Zalo: ${renderValue(payload.support.zalo)}`,
     '',
-    '❤️ AI Store chân thành cảm ơn bạn đã tin tưởng sử dụng dịch vụ!',
+    '💚 Chúc bạn sử dụng dịch vụ thật hiệu quả. Cảm ơn bạn đã chọn AI Store!',
   ].join('\n');
 }
 
 export function renderDeliveryTelegramMessage(payload: DeliveryMessagePayload) {
   return [
-    '🎉 <b>ĐẶT HÀNG THÀNH CÔNG</b> 🎉',
+    '✨ <b>AI STORE ĐÃ GIAO DỊCH VỤ</b> ✨',
     '',
-    `💳 Mã đơn hàng: <code>${escapeHtml(renderValue(payload.orderCode))}</code>`,
+    'Cảm ơn bạn đã tin tưởng AI Store. Mình gửi thông tin nhận dịch vụ ngay bên dưới nhé.',
     '',
-    '▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬',
+    `🧾 Mã đơn hàng: <code>${escapeHtml(renderValue(payload.orderCode))}</code>`,
     '',
+    '━━━━━━━━━━━━━━━━━━━━',
     ...payload.products.flatMap(renderTelegramProduct),
-    '▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬',
+    '━━━━━━━━━━━━━━━━━━━━',
     '',
-    '☎️ <b>Kênh hỗ trợ:</b>',
-    `✈️ Telegram: ${escapeHtml(renderValue(payload.support.telegram))}`,
-    `💬 Zalo: ${escapeHtml(renderValue(payload.support.zalo))}`,
+    '🛟 <b>Cần hỗ trợ cứ nhắn mình:</b>',
+    `💬 Telegram: ${escapeHtml(renderValue(payload.support.telegram))}`,
+    `📱 Zalo: ${escapeHtml(renderValue(payload.support.zalo))}`,
     '',
-    '❤️ <i>AI Store chân thành cảm ơn bạn đã tin tưởng sử dụng dịch vụ!</i>',
+    '💚 <i>Chúc bạn sử dụng dịch vụ thật hiệu quả. Cảm ơn bạn đã chọn AI Store!</i>',
   ].join('\n');
 }
 
@@ -71,28 +73,31 @@ function renderProduct(product: DeliveryProduct) {
   const accounts = product.accounts.length ? product.accounts : [{}];
 
   return accounts.flatMap((account, index) => {
-    const header = `📦 ${renderProductName(product)}${accounts.length > 1 ? ` (Phần ${index + 1})` : ''}`;
+    const header = `🎁 ${renderProductName(product)}${accounts.length > 1 ? ` (Phần ${index + 1})` : ''}`;
     if (account.gatewayUrl) {
       return [
         header,
-        `🔗 Link nhận dịch vụ: ${renderValue(account.gatewayUrl)}`,
+        `🚀 Link nhận dịch vụ: ${renderValue(account.gatewayUrl)}`,
+        product.warrantyDays ? `🛡️ Bảo hành: ${product.warrantyDays} ngày` : '',
         '',
-      ];
+      ].filter(Boolean);
     }
 
     if (account.licenseKey || account.apiKey || account.voucherCode) {
       return [
         header,
-        `🔑 Mã kích hoạt: ${renderValue(account.licenseKey || account.apiKey || account.voucherCode)}`,
+        `🔐 Mã kích hoạt: ${renderValue(account.licenseKey || account.apiKey || account.voucherCode)}`,
+        product.warrantyDays ? `🛡️ Bảo hành: ${product.warrantyDays} ngày` : '',
         '',
-      ];
+      ].filter(Boolean);
     }
 
     return [
       header,
       `👤 Tài khoản: ${renderValue(account.email || account.username)}`,
       `🔒 Mật khẩu: ${renderValue(account.password)}`,
-      account.workspace ? `💼 Workspace: ${renderValue(account.workspace)}` : '',
+      account.workspace ? `🏢 Workspace: ${renderValue(account.workspace)}` : '',
+      product.warrantyDays ? `🛡️ Bảo hành: ${product.warrantyDays} ngày` : '',
       '',
     ].filter(Boolean);
   });
@@ -102,28 +107,31 @@ function renderTelegramProduct(product: DeliveryProduct) {
   const accounts = product.accounts.length ? product.accounts : [{}];
 
   return accounts.flatMap((account, index) => {
-    const header = `📦 <b>${escapeHtml(renderProductName(product))}</b>${accounts.length > 1 ? ` (Phần ${index + 1})` : ''}`;
+    const header = `🎁 <b>${escapeHtml(renderProductName(product))}</b>${accounts.length > 1 ? ` (Phần ${index + 1})` : ''}`;
     if (account.gatewayUrl) {
       return [
         header,
-        `🔗 Link nhận dịch vụ: <a href="${escapeHtml(renderValue(account.gatewayUrl))}">Tham gia ngay</a>`,
+        `🚀 Link nhận dịch vụ: <a href="${escapeHtml(renderValue(account.gatewayUrl))}">Bấm để tham gia ngay</a>`,
+        product.warrantyDays ? `🛡️ Bảo hành: <b>${product.warrantyDays} ngày</b>` : '',
         '',
-      ];
+      ].filter(Boolean);
     }
 
     if (account.licenseKey || account.apiKey || account.voucherCode) {
       return [
         header,
-        `🔑 Mã kích hoạt: <code>${escapeHtml(renderValue(account.licenseKey || account.apiKey || account.voucherCode))}</code>`,
+        `🔐 Mã kích hoạt: <code>${escapeHtml(renderValue(account.licenseKey || account.apiKey || account.voucherCode))}</code>`,
+        product.warrantyDays ? `🛡️ Bảo hành: <b>${product.warrantyDays} ngày</b>` : '',
         '',
-      ];
+      ].filter(Boolean);
     }
 
     return [
       header,
       `👤 Tài khoản: <code>${escapeHtml(renderValue(account.email || account.username))}</code>`,
       `🔒 Mật khẩu: <code>${escapeHtml(renderValue(account.password))}</code>`,
-      account.workspace ? `💼 Workspace: <code>${escapeHtml(renderValue(account.workspace))}</code>` : '',
+      account.workspace ? `🏢 Workspace: <code>${escapeHtml(renderValue(account.workspace))}</code>` : '',
+      product.warrantyDays ? `🛡️ Bảo hành: <b>${product.warrantyDays} ngày</b>` : '',
       '',
     ].filter(Boolean);
   });

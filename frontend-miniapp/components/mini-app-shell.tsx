@@ -102,16 +102,6 @@ export function MiniAppShell() {
     }
   }, [items.length]);
 
-  if (supplierMode.connect || supplierMode.requestToken) {
-    return (
-      <SupplierWorkspace
-        initData={initData}
-        requestToken={supplierMode.requestToken}
-        inviteToken={supplierMode.inviteToken}
-      />
-    );
-  }
-
   useEffect(() => {
     const paymentId = paymentStatus?.payment.id;
     const paid =
@@ -127,6 +117,16 @@ export function MiniAppShell() {
     window.sessionStorage.removeItem(PAYMENT_RESULT_STORAGE_KEY);
     clear();
   }, [clear, paymentStatus]);
+
+  if (supplierMode.connect || supplierMode.requestToken) {
+    return (
+      <SupplierWorkspace
+        initData={initData}
+        requestToken={supplierMode.requestToken}
+        inviteToken={supplierMode.inviteToken}
+      />
+    );
+  }
 
   function showToast(nextToast: ToastState) {
     setToast(nextToast);

@@ -36,6 +36,7 @@ import { UsersModule } from './users/users.module';
         JWT_REFRESH_SECRET: Joi.string().default('dev-refresh-secret'),
         INVENTORY_PASSWORD_SECRET: Joi.string().default('local-inventory-password-secret'),
         TELEGRAM_BOT_TOKEN: Joi.string().allow('').default(''),
+        TELEGRAM_BOT_USERNAME: Joi.string().allow('').default(''),
         TELEGRAM_MINIAPP_URL: Joi.string().uri().default('https://ai-store-o29h.vercel.app'),
         ADMIN_APP_URL: Joi.string().uri().default('https://ai-store-kappa-beige.vercel.app'),
         PAYOS_CLIENT_ID: Joi.string().allow('').default(''),

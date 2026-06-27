@@ -8,20 +8,9 @@ const ENCRYPTED_PREFIX = 'v1';
 export class InventoryPasswordService {
   constructor(private readonly configService: ConfigService) {}
 
-  encrypt(value: string | null | undefined) {
-    if (!value) return value;
+  encrypt(value: string | null | undefined): string | null {
+    if (!value) return null;
     if (this.isEncrypted(value)) return value;
-
-    const iv = randomBytes(12);
-    const cipher = createCipheriv('aes-256-gcm', this.getKey(), iv);
-    const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
-    const tag = cipher.getAuthTag();
-
-    return [
-      ENCRYPTED_PREFIX,
-      iv.toString('hex'),
-      tag.toString('hex'),
-      encrypted.toString('hex'),
 
     const iv = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm', this.getKey(), iv);

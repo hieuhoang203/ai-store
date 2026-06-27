@@ -42,6 +42,14 @@ export class ProductsService {
     return this.presentProduct(product);
   }
 
+  private sanitizeDeliveryConfig(config: any) {
+    if (!config || typeof config !== 'object' || Array.isArray(config)) return config;
+    const sanitized = { ...config };
+    delete sanitized.inviteLink;
+    delete sanitized.encryptedInviteLink;
+    return sanitized;
+  }
+
   private presentProduct(product: Awaited<ReturnType<ProductsRepository['findActiveProducts']>>[number]) {
     return {
       id: product.id,
@@ -59,6 +67,11 @@ export class ProductsService {
         durationDays: goi.thoiHanNgay,
         warrantyDays: goi.baoHanhNgay,
         availableStock: goi.tonHienThi,
+        deliveryType: goi.phuongThuc[0]?.phuongThuc.kieu || null,
+        deliveryConfig: this.sanitizeDeliveryConfig(
+          goi.phuongThuc[0]?.cauHinh || goi.phuongThuc[0]?.phuongThuc.cauHinhMacDinh || null,
+        ),
+        requiresCustomerInput: goi.phuongThuc[0]?.phuongThuc.kieu === 'GUI_EMAIL_CHO_DOI_TAC',
         averageRating: '0',
         reviewCount: 0,
       })),

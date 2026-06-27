@@ -21,6 +21,7 @@ export function CartView({
   onQuantityChange,
   onCheckout,
   onRenewPayment,
+  onCancelPayment,
   onCouponCodeChange,
   onApplyCoupon,
   onClearCoupon,
@@ -37,13 +38,14 @@ export function CartView({
   onQuantityChange: (variantId: string, quantity: number) => void;
   onCheckout: () => void;
   onRenewPayment: () => void;
+  onCancelPayment: () => void;
   onCouponCodeChange: (value: string) => void;
   onApplyCoupon: () => void;
   onClearCoupon: () => void;
 }) {
   const locked = processing || Boolean(paymentResult);
 
-  if (!items.length && !paymentResult) {
+  if (!items.length) {
     return <EmptyState title="Giỏ hàng trống" text="Thêm gói sản phẩm để bắt đầu tạo đơn thanh toán." />;
   }
 
@@ -54,9 +56,19 @@ export function CartView({
       {paymentStatus?.payment.status === "PAID" ? (
         <PaymentSuccessPanel status={paymentStatus} />
       ) : paymentStatus?.payment.status === "FAILED" ? (
-        <PaymentExpiredPanel orderNo={paymentResult?.order.orderNo} processing={processing} onRenewPayment={onRenewPayment} />
+        <PaymentExpiredPanel
+          orderNo={paymentResult?.order.orderNo}
+          processing={processing}
+          onRenewPayment={onRenewPayment}
+          onCancelPayment={onCancelPayment}
+        />
       ) : paymentResult ? (
-        <PaymentPanel result={paymentResult} processing={processing} onRenewPayment={onRenewPayment} />
+        <PaymentPanel
+          result={paymentResult}
+          processing={processing}
+          onRenewPayment={onRenewPayment}
+          onCancelPayment={onCancelPayment}
+        />
       ) : null}
 
       {!paymentResult ? (
@@ -76,6 +88,22 @@ export function CartView({
                       {getStockLabel(item.availableStock)}
                     </p>
                   ) : null}
+                  {item.customerInput && (
+                    <div className="mt-2.5 space-y-1 rounded-lg bg-black/30 p-2 text-[11px] text-zinc-400">
+                      {!!item.customerInput.email && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-zinc-500">Email:</span>
+                          <span className="font-mono text-zinc-300">{String(item.customerInput.email)}</span>
+                        </div>
+                      )}
+                      {!!item.customerInput.workspace && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-zinc-500">Workspace:</span>
+                          <span className="font-mono text-zinc-300">{String(item.customerInput.workspace)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <button
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-400/20 bg-red-400/10 text-red-300"
@@ -185,10 +213,12 @@ function PaymentPanel({
   result,
   processing,
   onRenewPayment,
+  onCancelPayment,
 }: {
   result: CheckoutResult;
   processing: boolean;
   onRenewPayment: () => void;
+  onCancelPayment: () => void;
 }) {
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState(() =>
@@ -298,6 +328,14 @@ function PaymentPanel({
         </a>
       )}
 
+      <button
+        type="button"
+        onClick={onCancelPayment}
+        className="mt-3 h-11 w-full rounded-lg border border-white/10 bg-white/5 text-sm font-bold text-zinc-300 transition hover:bg-white/10 hover:text-white"
+      >
+        Quay lại giỏ hàng
+      </button>
+
       <p className="mt-3 text-xs leading-5 text-zinc-400">
         Hệ thống chỉ xác nhận đơn sau khi nhận webhook hợp lệ từ payOS. Vui lòng không tự sửa số tiền hoặc nội dung chuyển khoản.
       </p>
@@ -378,10 +416,12 @@ function PaymentExpiredPanel({
   orderNo,
   processing,
   onRenewPayment,
+  onCancelPayment,
 }: {
   orderNo?: string;
   processing: boolean;
   onRenewPayment: () => void;
+  onCancelPayment: () => void;
 }) {
   return (
     <section className="rounded-2xl border border-red-400/30 bg-red-400/10 p-4 shadow-xl shadow-black/20">
@@ -404,6 +444,13 @@ function PaymentExpiredPanel({
         className="mt-4 h-11 w-full rounded-lg bg-emerald-300 text-sm font-bold text-black transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {processing ? "Đang tạo QR mới..." : "Tạo QR mới"}
+      </button>
+      <button
+        type="button"
+        onClick={onCancelPayment}
+        className="mt-3 h-11 w-full rounded-lg border border-white/10 bg-white/5 text-sm font-bold text-zinc-300 transition hover:bg-white/10 hover:text-white"
+      >
+        Quay lại giỏ hàng
       </button>
     </section>
   );

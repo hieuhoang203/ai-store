@@ -16,6 +16,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TelegramService.name);
   private bot?: Telegraf;
 
+  private botUsername?: string;
+
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
@@ -30,6 +32,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.bot = new Telegraf(token);
+    try {
+      const me = await this.bot.telegram.getMe();
+      this.botUsername = me.username;
+    } catch (error) {
+      this.logger.warn(`Failed to fetch bot info: ${error instanceof Error ? error.message : 'unknown'}`);
+    }
     this.registerCommands(this.bot);
     await this.bot.telegram.setMyCommands([
       { command: 'start', description: 'Mở AI Store' },
@@ -43,6 +51,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy() {
     this.bot?.stop('NestJS shutdown');
+  }
+
+  getBotUsername(): string {
+    return this.botUsername || this.configService.get<string>('TELEGRAM_BOT_USERNAME') || 'ai_store_bot';
   }
 
   async sendMessage(telegramId: bigint | number | string, message: string) {
@@ -71,6 +83,21 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       }
 
       await this.syncTelegramProfile(context.from);
+
+      const payload = context.payload || '';
+      if (payload.startsWith('connect_')) {
+        const token = payload.substring(8);
+        const miniAppUrl = this.configService.getOrThrow<string>('TELEGRAM_MINIAPP_URL');
+        const separator = miniAppUrl.includes('?') ? '&' : '?';
+        const onboardingUrl = `${miniAppUrl}${separator}supplier=connect&token=${token}`;
+
+        await context.reply(
+          'Để hoàn tất liên kết tài khoản nhà cung cấp, vui lòng nhấn nút bên dưới để mở Mini App:',
+          Markup.inlineKeyboard([[Markup.button.webApp('Kết nối nhà cung cấp', onboardingUrl)]]),
+        );
+        return;
+      }
+
       await this.replyStartMenu(context);
     });
 
@@ -110,6 +137,65 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       const token = await this.authService.createAdminLoginToken(user.id);
       const adminUrl = this.configService.getOrThrow<string>('ADMIN_APP_URL');
       await context.reply(`${adminUrl}/auth/login?token=${token}`);
+    });
+
+    bot.command('register', async (context) => {
+      await this.syncTelegramProfile(context.from);
+
+      const telegramId = BigInt(context.from.id);
+      const user = await this.prisma.nguoiDung.findUnique({ where: { telegramId } });
+      if (!user) {
+        await context.reply('Tài khoản chưa được đăng ký. Vui lòng gõ /start trước.');
+        return;
+      }
+
+      // Check if user is already a supplier
+      const existingSupplier = await this.prisma.nhaCungCap.findUnique({
+        where: { telegramId },
+      });
+
+      if (existingSupplier && existingSupplier.trangThai === 'DANG_HOAT_DONG' && !existingSupplier.daXoa) {
+        await context.reply('Tài khoản của bạn đã được đăng ký làm nhà cung cấp trước đó.');
+        return;
+      }
+
+      const displayName = user.hoTen || user.username || `Supplier ${user.telegramId}`;
+
+      await this.prisma.$transaction(async (tx) => {
+        // Ensure they have the supplier role NHA_CUNG_CAP
+        const role = await tx.vaiTro.upsert({
+          where: { ten: VaiTroHeThong.NHA_CUNG_CAP },
+          create: { ten: VaiTroHeThong.NHA_CUNG_CAP },
+          update: {},
+        });
+        await tx.nguoiDungVaiTro.upsert({
+          where: { nguoiDungId_vaiTroId: { nguoiDungId: user.id, vaiTroId: role.id } },
+          create: { nguoiDungId: user.id, vaiTroId: role.id },
+          update: { daXoa: false },
+        });
+
+        await tx.nhaCungCap.upsert({
+          where: { telegramId },
+          create: {
+            nguoiDungId: user.id,
+            telegramId,
+            usernameTelegram: user.username,
+            tenHienThi: displayName,
+            kenhNhanViec: 'TELEGRAM_BOT',
+            trangThai: 'DANG_HOAT_DONG',
+          },
+          update: {
+            nguoiDungId: user.id,
+            usernameTelegram: user.username,
+            tenHienThi: displayName,
+            kenhNhanViec: 'TELEGRAM_BOT',
+            trangThai: 'DANG_HOAT_DONG',
+            daXoa: false,
+          },
+        });
+      });
+
+      await context.reply(`Chúc mừng! Tài khoản ${displayName} đã đăng ký làm nhà cung cấp thành công.`);
     });
   }
 

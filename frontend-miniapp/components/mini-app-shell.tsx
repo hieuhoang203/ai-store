@@ -20,6 +20,7 @@ import type { TabKey, ToastState } from "./mini-app-types";
 import { OrdersView } from "./orders-view";
 import { ProductGrid } from "./product-grid";
 import { ProfileView } from "./profile-view";
+import { SupplierWorkspace } from "./supplier-workspace";
 import { ToastBanner } from "./toast-banner";
 import { TopSummary } from "./top-summary";
 
@@ -44,6 +45,15 @@ export function MiniAppShell() {
   const [couponResult, setCouponResult] = useState<CouponValidationResult | null>(null);
   const [couponProcessing, setCouponProcessing] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
+  const [supplierMode, setSupplierMode] = useState<{
+    connect: boolean;
+    requestToken: string | null;
+    inviteToken: string | null;
+  }>({
+    connect: false,
+    requestToken: null,
+    inviteToken: null,
+  });
   const { data: products = [], isLoading } = useQuery({ queryKey: ["products"], queryFn: getProducts });
   const { items, addItem, removeItem, updateQuantity, clear } = useCartStore();
   const { initData } = useTelegramUser();
@@ -68,16 +78,39 @@ export function MiniAppShell() {
   );
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const supplier = params.get("supplier") === "connect";
+    const requestToken = params.get("supplierRequest");
+    const inviteToken = params.get("token");
+    if (supplier || requestToken) {
+      setSupplierMode({ connect: supplier, requestToken, inviteToken });
+      return;
+    }
+
     const storedPaymentResult = window.sessionStorage.getItem(PAYMENT_RESULT_STORAGE_KEY);
     if (!storedPaymentResult) return;
 
-    try {
-      setPaymentResult(JSON.parse(storedPaymentResult) as CheckoutResult);
-      setActiveTab("cart");
-    } catch {
+    if (items.length > 0) {
+      try {
+        setPaymentResult(JSON.parse(storedPaymentResult) as CheckoutResult);
+        setActiveTab("cart");
+      } catch {
+        window.sessionStorage.removeItem(PAYMENT_RESULT_STORAGE_KEY);
+      }
+    } else {
       window.sessionStorage.removeItem(PAYMENT_RESULT_STORAGE_KEY);
     }
-  }, []);
+  }, [items.length]);
+
+  if (supplierMode.connect || supplierMode.requestToken) {
+    return (
+      <SupplierWorkspace
+        initData={initData}
+        requestToken={supplierMode.requestToken}
+        inviteToken={supplierMode.inviteToken}
+      />
+    );
+  }
 
   useEffect(() => {
     const paymentId = paymentStatus?.payment.id;
@@ -180,6 +213,11 @@ export function MiniAppShell() {
     }
   }
 
+  function handleCancelPayment() {
+    setPaymentResult(null);
+    window.sessionStorage.removeItem(PAYMENT_RESULT_STORAGE_KEY);
+  }
+
   return (
     <main className="mx-auto flex h-screen min-h-[100dvh] max-w-md flex-col overflow-hidden border-x border-white/10 bg-[#050805]/72 pb-[calc(72px+env(safe-area-inset-bottom))] shadow-2xl shadow-black/50">
       <ToastBanner toast={toast} />
@@ -216,6 +254,7 @@ export function MiniAppShell() {
             onQuantityChange={handleQuantityChange}
             onCheckout={submitCheckout}
             onRenewPayment={submitCheckout}
+            onCancelPayment={handleCancelPayment}
             onCouponCodeChange={setCouponCode}
             onApplyCoupon={applyCoupon}
             onClearCoupon={() => {

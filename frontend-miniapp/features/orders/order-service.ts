@@ -200,6 +200,7 @@ export async function checkout(initData: string, items: CartItem[], couponCode?:
       items: items.map((item) => ({
         variantId: item.variantId,
         quantity: item.quantity,
+        customerInput: item.customerInput,
       })),
     });
     return response.data;
@@ -216,6 +217,7 @@ export async function validateCoupon(initData: string, code: string, items: Cart
       items: items.map((item) => ({
         variantId: item.variantId,
         quantity: item.quantity,
+        customerInput: item.customerInput,
       })),
     });
     return response.data;

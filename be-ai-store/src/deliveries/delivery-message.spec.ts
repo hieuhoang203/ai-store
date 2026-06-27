@@ -26,23 +26,22 @@ describe('renderDeliveryMessage', () => {
     });
 
     expect(message).toBe([
-      '🎉 ĐẶT HÀNG THÀNH CÔNG',
+      '🎉 ĐẶT HÀNG THÀNH CÔNG 🎉',
       '',
-      '🧾 Mã đơn: AI178176743658873',
+      '💳 Mã đơn hàng: AI178176743658873',
       '',
-      '━━━━━━━━━━━━━━',
+      '▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬',
       '',
-      '🤖 Figma (1 Tháng)',
-      '📧 figmaprotest@gmail.com',
-      '🔑 admin@1234',
+      '📦 Figma (1 Tháng)',
+      '👤 Tài khoản: figmaprotest@gmail.com',
+      '🔒 Mật khẩu: admin@1234',
+      '▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬',
       '',
-      '━━━━━━━━━━━━━━',
+      '☎️ Kênh hỗ trợ:',
+      '✈️ Telegram: @hieuhv203',
+      '💬 Zalo: 0966628527',
       '',
-      '🛠️ Hỗ trợ:',
-      '💬 Telegram: @hieuhv203',
-      '📱 Zalo: 0966628527',
-      '',
-      '❤️ AI Store cảm ơn bạn đã tin tưởng sử dụng dịch vụ.',
+      '❤️ AI Store chân thành cảm ơn bạn đã tin tưởng sử dụng dịch vụ!',
     ].join('\n'));
   });
 
@@ -63,8 +62,8 @@ describe('renderDeliveryMessage', () => {
       ],
     });
 
-    expect(message).toContain('🤖 ChatGPT Plus (1 Tháng)\n📧 a@gmail.com\n🔑 123');
-    expect(message).toContain('🤖 ChatGPT Plus (1 Tháng)\n📧 b@gmail.com\n🔑 456');
+    expect(message).toContain('📦 ChatGPT Plus (1 Tháng) (Phần 1)\n👤 Tài khoản: a@gmail.com\n🔒 Mật khẩu: 123');
+    expect(message).toContain('📦 ChatGPT Plus (1 Tháng) (Phần 2)\n👤 Tài khoản: b@gmail.com\n🔒 Mật khẩu: 456');
   });
 
   it('renders multiple products with multiple accounts', () => {
@@ -89,12 +88,10 @@ describe('renderDeliveryMessage', () => {
 
     const message = renderDeliveryMessage(payload);
 
-    expect(message).toContain('🤖 Figma (1 Tháng)\n📧 figma@gmail.com\n🔑 figma-pass');
-    expect(message).toContain('🤖 Canva (365 Ngày)\n📧 canva@gmail.com\n🔑 canva-pass');
-    expect(message).toContain('💬 Telegram: @hieuhv203');
-    expect(message).toContain('📱 Zalo: 0966628527');
-    expect(message).not.toContain('Email:');
-    expect(message).not.toContain('LƯU Ý');
+    expect(message).toContain('📦 Figma (1 Tháng)\n👤 Tài khoản: figma@gmail.com\n🔒 Mật khẩu: figma-pass');
+    expect(message).toContain('📦 Canva (365 Ngày)\n👤 Tài khoản: canva@gmail.com\n🔒 Mật khẩu: canva-pass');
+    expect(message).toContain('✈️ Telegram: @hieuhv203');
+    expect(message).toContain('💬 Zalo: 0966628527');
   });
 
   it('renders telegram message with copyable account credentials', () => {
@@ -111,9 +108,9 @@ describe('renderDeliveryMessage', () => {
       ],
     });
 
-    expect(message).toContain('🧾 Mã đơn: <code>AI178176743658876</code>');
-    expect(message).toContain('🤖 Figma &lt;Pro&gt; (1 Tháng)');
-    expect(message).toContain('📧 <code>figma&amp;test@gmail.com</code>');
-    expect(message).toContain('🔑 <code>admin&lt;1234&gt;</code>');
+    expect(message).toContain('💳 Mã đơn hàng: <code>AI178176743658876</code>');
+    expect(message).toContain('📦 <b>Figma &lt;Pro&gt; (1 Tháng)</b>');
+    expect(message).toContain('👤 Tài khoản: <code>figma&amp;test@gmail.com</code>');
+    expect(message).toContain('🔒 Mật khẩu: <code>admin&lt;1234&gt;</code>');
   });
 });

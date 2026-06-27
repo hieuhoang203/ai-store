@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomBytes } from 'node:crypto';
 import {
   KieuPhuongThucGiaoHang,
   LoaiNguonGiaoHang,
@@ -14,6 +15,7 @@ import { PrismaService } from '../database/prisma.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { PayosService } from './payos/payos.service';
 import { PayosWebhookBody } from './payos/payos.types';
+import { InventoryPasswordService } from '../inventories/inventory-password.service';
 
 export const PAYMENT_QR_TTL_MS = 3 * 60 * 1000;
 
@@ -27,6 +29,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     private readonly payosService: PayosService,
     private readonly configService: ConfigService,
     private readonly telegramService: TelegramService,
+    private readonly inventoryPasswordService: InventoryPasswordService,
   ) {}
 
   onModuleInit() {
@@ -247,15 +250,31 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     });
 
     for (const item of order.chiTiet) {
-      if (item.giaoHang.length >= item.soLuong) continue;
+      const deliveredCount = item.giaoHang.filter((delivery) => delivery.trangThai === TrangThaiGiaoHang.DA_GIAO).length;
+      const missingQuantity = Math.max(item.soLuong - deliveredCount, 0);
+      if (missingQuantity <= 0) continue;
       const kieu = item.goiPhuongThuc.phuongThuc.kieu;
 
       if (kieu === KieuPhuongThucGiaoHang.GUI_LINK) {
-        await this.deliverFromInternalResource(item.id, item.goiDichVuId, item.goiPhuongThucId);
+        for (let index = 0; index < missingQuantity; index += 1) {
+          const delivered = await this.deliverFromInternalResource(item.id, item.goiDichVuId, item.goiPhuongThucId);
+          if (!delivered) {
+            const deliveredFromConfig = await this.deliverFromConfigLink(item.id, item.goiPhuongThuc);
+            if (!deliveredFromConfig) {
+              await this.createSupplierRequest(item.id, missingQuantity - index);
+              break;
+            }
+          }
+        }
         continue;
       }
 
-      await this.createSupplierRequest(item.id, item.soLuong);
+      if (kieu === KieuPhuongThucGiaoHang.NHAP_TAY) {
+        await this.createManualFulfillmentPlaceholder(item.id, missingQuantity, kieu);
+        continue;
+      }
+
+      await this.createSupplierRequest(item.id, missingQuantity);
     }
 
     const refreshed = await this.prisma.donHang.findUniqueOrThrow({
@@ -268,9 +287,23 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       0,
     );
 
+    const supplierRequests = await this.prisma.yeuCauNhaCungCap.count({
+      where: {
+        chiTietDonHang: { donHangId: orderId },
+        trangThai: { in: [TrangThaiYeuCauNhaCungCap.CHO_NHAN, TrangThaiYeuCauNhaCungCap.DA_NHAN, TrangThaiYeuCauNhaCungCap.DANG_XU_LY] },
+      },
+    });
+
     await this.prisma.donHang.update({
       where: { id: orderId },
-      data: { trangThai: delivered >= expected ? TrangThaiDonHang.DA_GIAO : TrangThaiDonHang.CHO_NHA_CUNG_CAP },
+      data: {
+        trangThai:
+          delivered >= expected
+            ? TrangThaiDonHang.DA_GIAO
+            : supplierRequests > 0
+              ? TrangThaiDonHang.CHO_NHA_CUNG_CAP
+              : TrangThaiDonHang.DANG_XU_LY,
+      },
     });
   }
 
@@ -286,8 +319,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (!resource) {
-      await this.createSupplierRequest(chiTietDonHangId, 1);
-      return;
+      return false;
     }
 
     const content = this.renderDeliveryContent(resource.duLieuCongKhai);
@@ -308,15 +340,86 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         },
       }),
     ]);
+    return true;
+  }
+
+  private async deliverFromConfigLink(chiTietDonHangId: string, goiPhuongThuc: any) {
+    if (!goiPhuongThuc || !goiPhuongThuc.cauHinh || typeof goiPhuongThuc.cauHinh !== 'object' || Array.isArray(goiPhuongThuc.cauHinh)) {
+      return false;
+    }
+
+    const config = goiPhuongThuc.cauHinh as Record<string, any>;
+    const rawLink = typeof config.inviteLink === 'string' ? config.inviteLink : null;
+    const encryptedLink = typeof config.encryptedInviteLink === 'string' ? config.encryptedInviteLink : null;
+
+    if (!rawLink && !encryptedLink) {
+      return false;
+    }
+
+    // Check usage limits
+    const maxUses = config.maxUses !== undefined && config.maxUses !== null ? Number(config.maxUses) : null;
+    const usedCount = config.usedCount !== undefined && config.usedCount !== null ? Number(config.usedCount) : 0;
+    const remainingUses = config.remainingUses !== undefined && config.remainingUses !== null ? Number(config.remainingUses) : null;
+
+    if (maxUses !== null && usedCount >= maxUses) {
+      return false;
+    }
+    if (remainingUses !== null && remainingUses <= 0) {
+      return false;
+    }
+
+    let finalEncryptedLink = encryptedLink;
+
+    if (rawLink && !encryptedLink) {
+      finalEncryptedLink = this.inventoryPasswordService.encrypt(rawLink) || null;
+      config.encryptedInviteLink = finalEncryptedLink;
+      delete config.inviteLink;
+    }
+
+    const newUsedCount = usedCount + 1;
+    config.usedCount = newUsedCount;
+    if (remainingUses !== null) {
+      config.remainingUses = Math.max(remainingUses - 1, 0);
+    }
+
+    await this.prisma.goiPhuongThucGiaoHang.update({
+      where: { id: goiPhuongThuc.id },
+      data: { cauHinh: config },
+    });
+
+    const gatewayToken = randomBytes(24).toString('hex');
+    const publicUrl = this.configService.get<string>('APP_PUBLIC_URL') || 'http://localhost:8903';
+    const gatewayUrl = `${publicUrl.replace(/\/$/, '')}/join/${gatewayToken}`;
+
+    await this.prisma.giaoHang.create({
+      data: {
+        chiTietDonHangId,
+        nguonGiaoHang: LoaiNguonGiaoHang.KHO_NOI_BO,
+        noiDungGiao: `Link nhận dịch vụ: ${gatewayUrl}`,
+        duLieuGiao: { gatewayUrl },
+        metadata: {
+          type: KieuPhuongThucGiaoHang.GUI_LINK,
+          gatewayToken,
+          encryptedInviteLink: finalEncryptedLink,
+          maxAccess: 3,
+          usedCount: 0,
+        },
+        giaoLuc: new Date(),
+        trangThai: TrangThaiGiaoHang.DA_GIAO,
+      },
+    });
+
+    return true;
   }
 
   private async createSupplierRequest(chiTietDonHangId: string, quantity: number) {
+    if (quantity <= 0) return;
     const existing = await this.prisma.yeuCauNhaCungCap.count({ where: { chiTietDonHangId } });
     if (existing) return;
 
     const item = await this.prisma.chiTietDonHang.findUniqueOrThrow({
       where: { id: chiTietDonHangId },
-      include: { goiDichVu: true },
+      include: { goiDichVu: { include: { sanPham: true } }, donHang: true },
     });
     const supplier = await this.prisma.nhaCungCapGoiDichVu.findFirst({
       where: {
@@ -326,11 +429,12 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         trangThai: 'DANG_HOAT_DONG',
         nhaCungCap: { daXoa: false, trangThai: 'DANG_HOAT_DONG' },
       },
-      orderBy: [{ uuTien: 'asc' }, { taoLuc: 'asc' }],
       include: { nhaCungCap: true },
+      orderBy: [{ uuTien: 'asc' }, { taoLuc: 'asc' }],
     });
     if (!supplier) return;
 
+    const tokenForm = this.createSupplierRequestToken();
     const request = await this.prisma.yeuCauNhaCungCap.create({
       data: {
         chiTietDonHangId,
@@ -338,23 +442,62 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         maYeuCau: `SUP${Date.now()}${Math.floor(Math.random() * 1000)}`,
         soLuong: quantity,
         duLieuGui: item.duLieuKhachNhap || undefined,
+        tokenForm,
+        guiLuc: new Date(),
         trangThai: TrangThaiYeuCauNhaCungCap.CHO_NHAN,
       },
     });
 
-    if (supplier.nhaCungCap.telegramId) {
-      await this.telegramService.sendMessage(
-        supplier.nhaCungCap.telegramId,
-        [
-          'Bạn có yêu cầu xử lý đơn hàng mới.',
-          '',
-          `Mã yêu cầu: ${request.maYeuCau}`,
-          `Số lượng: ${request.soLuong}`,
-          '',
-          'Vui lòng mở trang/form dành cho nhà cung cấp để nhận và trả kết quả.',
-        ].join('\n'),
-      );
-    }
+    await this.notifySupplierRequest(supplier.nhaCungCap, request.maYeuCau, {
+      orderNo: item.donHang.maDonHang,
+      productName: item.goiDichVu.sanPham.tenSanPham,
+      variantName: item.goiDichVu.tenGoi,
+      quantity,
+      tokenForm,
+    });
+  }
+
+  private async createManualFulfillmentPlaceholder(chiTietDonHangId: string, quantity: number, type: KieuPhuongThucGiaoHang) {
+    const existing = await this.prisma.giaoHang.count({
+      where: { chiTietDonHangId, nguonGiaoHang: LoaiNguonGiaoHang.ADMIN_NHAP_TAY, trangThai: TrangThaiGiaoHang.CHO_GIAO, daXoa: false },
+    });
+    if (existing) return;
+
+    await this.prisma.giaoHang.create({
+      data: {
+        chiTietDonHangId,
+        nguonGiaoHang: LoaiNguonGiaoHang.ADMIN_NHAP_TAY,
+        noiDungGiao: `Cho admin nhap tay ${quantity} phan giao hang.`,
+        metadata: { type, expectedQuantity: quantity },
+        trangThai: TrangThaiGiaoHang.CHO_GIAO,
+      },
+    });
+  }
+
+  private async notifySupplierRequest(
+    supplier: { telegramId: bigint | null; usernameTelegram: string | null; tenHienThi: string },
+    requestCode: string,
+    context: { orderNo: string; productName: string; variantName: string; quantity: number; tokenForm: string },
+  ) {
+    if (!supplier.telegramId) return;
+    const miniAppUrl = this.configService.get<string>('TELEGRAM_MINIAPP_URL') || 'http://localhost:405';
+    const separator = miniAppUrl.includes('?') ? '&' : '?';
+    const requestUrl = `${miniAppUrl}${separator}supplierRequest=${context.tokenForm}`;
+    const message = [
+      `Yeu cau moi: ${requestCode}`,
+      `Don hang: ${context.orderNo}`,
+      `Dich vu: ${context.productName} - ${context.variantName}`,
+      `So luong: ${context.quantity}`,
+      `Xu ly tai: ${requestUrl}`,
+    ].join('\n');
+
+    await this.telegramService.sendMessage(supplier.telegramId, message).catch((error: Error) => {
+      this.logger.warn(`Cannot notify supplier ${supplier.tenHienThi}: ${error.message}`);
+    });
+  }
+
+  private createSupplierRequestToken() {
+    return randomBytes(24).toString('base64url');
   }
 
   private async syncPendingPayosPayment(paymentId: string) {

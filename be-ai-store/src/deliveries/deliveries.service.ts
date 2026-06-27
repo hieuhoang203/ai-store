@@ -75,21 +75,25 @@ export class DeliveriesService {
       where: { id: yeuCauNhaCungCapId },
       include: { chiTietDonHang: true },
     });
-    const content = this.renderDeliveryContent(payload as Prisma.JsonValue);
+    const deliveryPayloads = this.normalizeDeliveryPayloads(payload, request.soLuong);
 
-    const delivery = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.giaoHang.create({
-        data: {
-          chiTietDonHangId: request.chiTietDonHangId,
-          yeuCauNhaCungCapId,
-          nguonGiaoHang: LoaiNguonGiaoHang.NHA_CUNG_CAP,
-          noiDungGiao: content,
-          duLieuGiao: payload,
-          metadata: { type },
-          giaoLuc: new Date(),
-          trangThai: TrangThaiGiaoHang.DA_GIAO,
-        },
-      });
+    const deliveries = await this.prisma.$transaction(async (tx) => {
+      const created = await Promise.all(
+        deliveryPayloads.map((deliveryPayload) =>
+          tx.giaoHang.create({
+            data: {
+              chiTietDonHangId: request.chiTietDonHangId,
+              yeuCauNhaCungCapId,
+              nguonGiaoHang: LoaiNguonGiaoHang.NHA_CUNG_CAP,
+              noiDungGiao: this.renderDeliveryContent(deliveryPayload as Prisma.JsonValue),
+              duLieuGiao: deliveryPayload,
+              metadata: { type },
+              giaoLuc: new Date(),
+              trangThai: TrangThaiGiaoHang.DA_GIAO,
+            },
+          }),
+        ),
+      );
       await tx.yeuCauNhaCungCap.update({
         where: { id: yeuCauNhaCungCapId },
         data: { trangThai: TrangThaiYeuCauNhaCungCap.DA_TRA_KET_QUA, traKetQuaLuc: new Date(), duLieuPhanHoi: payload },
@@ -98,7 +102,18 @@ export class DeliveriesService {
     });
 
     await this.completeOrderIfFullyDelivered(request.chiTietDonHang.donHangId);
-    return delivery;
+    return deliveries[0];
+  }
+
+  private normalizeDeliveryPayloads(payload: Prisma.InputJsonValue, expectedQuantity: number) {
+    if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+      const record = payload as Record<string, Prisma.InputJsonValue>;
+      if (Array.isArray(record.accounts) && record.accounts.length) {
+        return record.accounts.slice(0, expectedQuantity).map((account) => account as Prisma.InputJsonValue);
+      }
+    }
+
+    return [payload];
   }
 
   private async completeOrderIfFullyDelivered(orderId: string) {

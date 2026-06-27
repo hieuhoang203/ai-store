@@ -7,6 +7,9 @@ export type ProductVariant = {
   durationDays?: number | null;
   warrantyDays?: number | null;
   availableStock?: number;
+  deliveryType?: string | null;
+  deliveryConfig?: unknown;
+  requiresCustomerInput?: boolean;
   averageRating?: string;
   reviewCount?: number;
 };

@@ -45,10 +45,6 @@ export function CartView({
 }) {
   const locked = processing || Boolean(paymentResult);
 
-  if (!items.length) {
-    return <EmptyState title="Giỏ hàng trống" text="Thêm gói sản phẩm để bắt đầu tạo đơn thanh toán." />;
-  }
-
   return (
     <section className="mini-fade space-y-3">
       <SectionTitle title="Giỏ hàng" />
@@ -71,7 +67,11 @@ export function CartView({
         />
       ) : null}
 
-      {!paymentResult ? (
+      {!items.length && !paymentResult && !paymentStatus ? (
+        <EmptyState title="Giỏ hàng trống" text="Thêm gói sản phẩm để bắt đầu tạo đơn thanh toán." />
+      ) : null}
+
+      {!paymentResult && items.length ? (
         <>
           {items.map((item, index) => (
             <article

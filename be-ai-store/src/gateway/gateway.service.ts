@@ -33,14 +33,9 @@ export class GatewayService {
     const usedCount = this.toSafeInteger(metadata.usedCount);
     if (maxAccess > 0 && usedCount >= maxAccess) throw new ForbiddenException('Gateway access limit reached');
 
-    const encryptedInviteLink = String(metadata.encryptedInviteLink || '');
-    const inviteLink =
-      typeof metadata.inviteLink === 'string'
-        ? metadata.inviteLink
-        : encryptedInviteLink
-          ? this.inventoryPasswordService.decrypt(encryptedInviteLink)
-          : '';
-    if (!inviteLink) throw new NotFoundException('Gateway link not found');
+    const inviteLink = this.resolveInviteLink(metadata) || this.resolveInviteLink(this.normalizeMetadata(delivery.chiTietDonHang?.goiPhuongThuc?.cauHinh));
+    const redirectUrl = this.normalizeRedirectUrl(inviteLink);
+    if (!redirectUrl) throw new NotFoundException('Gateway link not found');
 
     await this.prisma.giaoHang.update({
       where: { id: delivery.id },
@@ -56,7 +51,7 @@ export class GatewayService {
       },
     });
     await this.redis.client.del(this.getTokenCacheKey(token)).catch(() => undefined);
-    return inviteLink;
+    return redirectUrl;
   }
 
   private async findDeliveryByToken(token: string) {
@@ -65,7 +60,10 @@ export class GatewayService {
     const deliveryId = cachedDeliveryId || (await this.findDeliveryIdByToken(token));
     if (!deliveryId) throw new NotFoundException('Gateway link not found');
     if (!cachedDeliveryId) await this.redis.client.set(cacheKey, deliveryId, 'EX', 300).catch(() => undefined);
-    return this.prisma.giaoHang.findUniqueOrThrow({ where: { id: deliveryId } });
+    return this.prisma.giaoHang.findUniqueOrThrow({
+      where: { id: deliveryId },
+      include: { chiTietDonHang: { include: { goiPhuongThuc: true } } },
+    });
   }
 
   private async findDeliveryIdByToken(token: string) {
@@ -99,8 +97,38 @@ export class GatewayService {
     return metadata as Record<string, unknown>;
   }
 
+  private resolveInviteLink(metadata: Record<string, unknown>) {
+    if (typeof metadata.inviteLink === 'string' && metadata.inviteLink.trim()) {
+      return metadata.inviteLink;
+    }
+
+    const encryptedInviteLink = typeof metadata.encryptedInviteLink === 'string' ? metadata.encryptedInviteLink : '';
+    if (!encryptedInviteLink) return '';
+
+    const decrypted = this.inventoryPasswordService.decrypt(encryptedInviteLink);
+    if (decrypted && decrypted !== encryptedInviteLink) return decrypted;
+    if (!this.inventoryPasswordService.isEncrypted(encryptedInviteLink)) return encryptedInviteLink;
+    return '';
+  }
+
   private toSafeInteger(value: unknown) {
     const number = Number(value || 0);
     return Number.isSafeInteger(number) && number > 0 ? number : 0;
+  }
+
+  private normalizeRedirectUrl(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    try {
+      const url = new URL(trimmed);
+      return ['http:', 'https:'].includes(url.protocol) ? url.toString() : null;
+    } catch {
+      try {
+        return new URL(`https://${trimmed}`).toString();
+      } catch {
+        return null;
+      }
+    }
   }
 }

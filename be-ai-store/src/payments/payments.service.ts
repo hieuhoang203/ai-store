@@ -12,10 +12,11 @@ import {
   TrangThaiYeuCauNhaCungCap,
 } from '../../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service';
+import { DeliveriesService } from '../deliveries/deliveries.service';
+import { InventoryPasswordService } from '../inventories/inventory-password.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { PayosService } from './payos/payos.service';
 import { PayosWebhookBody } from './payos/payos.types';
-import { InventoryPasswordService } from '../inventories/inventory-password.service';
 
 export const PAYMENT_QR_TTL_MS = 3 * 60 * 1000;
 
@@ -30,6 +31,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     private readonly configService: ConfigService,
     private readonly telegramService: TelegramService,
     private readonly inventoryPasswordService: InventoryPasswordService,
+    private readonly deliveriesService: DeliveriesService,
   ) {}
 
   onModuleInit() {
@@ -294,17 +296,21 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
+    const nextOrderStatus =
+      delivered >= expected
+        ? TrangThaiDonHang.DA_GIAO
+        : supplierRequests > 0
+          ? TrangThaiDonHang.CHO_NHA_CUNG_CAP
+          : TrangThaiDonHang.DANG_XU_LY;
+
     await this.prisma.donHang.update({
       where: { id: orderId },
-      data: {
-        trangThai:
-          delivered >= expected
-            ? TrangThaiDonHang.DA_GIAO
-            : supplierRequests > 0
-              ? TrangThaiDonHang.CHO_NHA_CUNG_CAP
-              : TrangThaiDonHang.DANG_XU_LY,
-      },
+      data: { trangThai: nextOrderStatus },
     });
+
+    if (nextOrderStatus === TrangThaiDonHang.DA_GIAO && order.trangThai !== TrangThaiDonHang.DA_GIAO) {
+      await this.deliveriesService.sendOrderDeliveryMessage(orderId);
+    }
   }
 
   private async deliverFromInternalResource(chiTietDonHangId: string, goiDichVuId: string, goiPhuongThucId: string) {
@@ -349,8 +355,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     }
 
     const config = goiPhuongThuc.cauHinh as Record<string, any>;
-    const rawLink = typeof config.inviteLink === 'string' ? config.inviteLink : null;
-    const encryptedLink = typeof config.encryptedInviteLink === 'string' ? config.encryptedInviteLink : null;
+    const { rawLink, rawLinkKey, encryptedLink } = this.extractConfiguredInviteLink(config);
 
     if (!rawLink && !encryptedLink) {
       return false;
@@ -373,7 +378,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     if (rawLink && !encryptedLink) {
       finalEncryptedLink = this.inventoryPasswordService.encrypt(rawLink) || null;
       config.encryptedInviteLink = finalEncryptedLink;
-      delete config.inviteLink;
+      if (rawLinkKey) delete config[rawLinkKey];
     }
 
     const newUsedCount = usedCount + 1;
@@ -401,7 +406,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           type: KieuPhuongThucGiaoHang.GUI_LINK,
           gatewayToken,
           encryptedInviteLink: finalEncryptedLink,
-          maxAccess: 3,
+          maxAccess: this.getPerDeliveryMaxAccess(config),
           usedCount: 0,
         },
         giaoLuc: new Date(),
@@ -498,6 +503,22 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
 
   private createSupplierRequestToken() {
     return randomBytes(24).toString('base64url');
+  }
+
+  private extractConfiguredInviteLink(config: Record<string, any>) {
+    const encryptedLink = typeof config.encryptedInviteLink === 'string' ? config.encryptedInviteLink : null;
+    const rawLinkKeys = ['inviteLink', 'url', 'link', 'gatewayUrl', 'deliveryLink', 'linkNhanDichVu'];
+    for (const key of rawLinkKeys) {
+      if (typeof config[key] === 'string' && config[key].trim()) {
+        return { rawLink: config[key].trim(), rawLinkKey: key, encryptedLink };
+      }
+    }
+    return { rawLink: null, rawLinkKey: null, encryptedLink };
+  }
+
+  private getPerDeliveryMaxAccess(config: Record<string, any>) {
+    const value = Number(config.maxAccessPerDelivery ?? config.maxAccess ?? 0);
+    return Number.isSafeInteger(value) && value > 0 ? value : 0;
   }
 
   private async syncPendingPayosPayment(paymentId: string) {

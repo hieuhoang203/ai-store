@@ -7,6 +7,7 @@ type TelegramWebApp = {
   colorScheme?: "light" | "dark";
   ready?: () => void;
   expand?: () => void;
+  openLink?: (url: string, options?: { try_instant_view?: boolean }) => void;
   BackButton?: { show: () => void; hide: () => void; onClick: (cb: () => void) => void };
   MainButton?: {
     setText: (text: string) => void;

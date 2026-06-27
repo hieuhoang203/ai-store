@@ -14,6 +14,9 @@ describe('InventoriesService', () => {
     nhaCungCapGoiDichVu: {
       aggregate: jest.fn(),
     },
+    goiPhuongThucGiaoHang: {
+      findMany: jest.fn(),
+    },
     goiDichVu: {
       update: jest.fn(),
     },
@@ -72,6 +75,12 @@ describe('InventoriesService', () => {
             _sum: { soLuongCoTheNhan: 15, soLuongDangGiu: 3 },
           }),
         },
+        goiPhuongThucGiaoHang: {
+          findMany: jest.fn().mockResolvedValue([
+            { cauHinh: { remainingUses: 7 } },
+            { cauHinh: { maxUses: 10, usedCount: 4 } },
+          ]),
+        },
         goiDichVu: {
           update: jest.fn().mockResolvedValue({}),
         },
@@ -95,9 +104,18 @@ describe('InventoriesService', () => {
         },
         _sum: { soLuongCoTheNhan: true, soLuongDangGiu: true },
       });
+      expect(mockTx.goiPhuongThucGiaoHang.findMany).toHaveBeenCalledWith({
+        where: {
+          goiDichVuId: 'goi-dich-vu-1',
+          daXoa: false,
+          trangThai: 'DANG_HOAT_DONG',
+          phuongThuc: { daXoa: false, trangThai: 'DANG_HOAT_DONG', kieu: 'GUI_LINK' },
+        },
+        select: { cauHinh: true },
+      });
       expect(mockTx.goiDichVu.update).toHaveBeenCalledWith({
         where: { id: 'goi-dich-vu-1' },
-        data: { tonHienThi: 22 },
+        data: { tonHienThi: 35 },
       });
     });
   });

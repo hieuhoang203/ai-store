@@ -20,6 +20,19 @@ export function useTelegramViewport() {
   }, [webApp]);
 }
 
+export function useTelegramExternalLink() {
+  const { webApp } = useTelegramContext();
+
+  return (url: string) => {
+    if (webApp?.openLink) {
+      webApp.openLink(url, { try_instant_view: false });
+      return;
+    }
+
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+}
+
 export function useTelegramBackButton(onClick: () => void, visible: boolean) {
   const { webApp } = useTelegramContext();
   useEffect(() => {

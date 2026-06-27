@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { AlertCircle, CheckCircle2, Clock3, ExternalLink, Minus, Plus, Trash2 } from "lucide-react";
 import type { CheckoutResult, CouponValidationResult, PaymentStatusResult } from "@/features/orders/order-service";
+import { useTelegramExternalLink } from "@/hooks/use-telegram";
 import type { CartItem } from "@/store/cart-store";
 import { EmptyState } from "./empty-state";
 import { SectionTitle } from "./section-title";
@@ -385,14 +386,16 @@ function PaymentSuccessPanel({ status }: { status: PaymentStatusResult }) {
 }
 
 function LinkifiedDeliveryText({ text, className = "" }: { text: string; className?: string }) {
+  const openExternalLink = useTelegramExternalLink();
+
   return (
     <div className={`${className} whitespace-pre-wrap break-words rounded-lg bg-black/35 p-3 text-sm leading-6 text-emerald-100`}>
-      {linkifyText(text)}
+      {linkifyText(text, openExternalLink)}
     </div>
   );
 }
 
-function linkifyText(text: string) {
+function linkifyText(text: string, openExternalLink: (url: string) => void) {
   const urlPattern = /(https?:\/\/[^\s]+)/g;
   return text.split(urlPattern).map((part, index) => {
     if (!/^https?:\/\//.test(part)) return part;
@@ -401,8 +404,10 @@ function linkifyText(text: string) {
       <a
         key={`${part}-${index}`}
         href={part}
-        target="_blank"
-        rel="noreferrer"
+        onClick={(event) => {
+          event.preventDefault();
+          openExternalLink(part);
+        }}
         className="inline-flex items-center gap-1 break-all font-bold text-emerald-300 underline decoration-emerald-300/40 underline-offset-2"
       >
         {part}

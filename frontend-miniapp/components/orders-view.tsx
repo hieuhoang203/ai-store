@@ -12,6 +12,7 @@ import {
   type OrderDetail,
   type OrderHistoryItem,
 } from "@/features/orders/order-service";
+import { useTelegramExternalLink } from "@/hooks/use-telegram";
 import { EmptyState } from "./empty-state";
 
 const PAGE_SIZE = 10;
@@ -505,11 +506,15 @@ function CopyRow({ label, value, copied, onCopy }: { label: string; value: strin
 }
 
 function GatewayLinkRow({ url }: { url: string }) {
+  const openExternalLink = useTelegramExternalLink();
+
   return (
     <a
       href={url}
-      target="_blank"
-      rel="noreferrer"
+      onClick={(event) => {
+        event.preventDefault();
+        openExternalLink(url);
+      }}
       className="mt-2 flex w-full items-center gap-2 rounded-md border border-emerald-300/25 bg-emerald-300/10 p-2 text-left transition hover:border-emerald-300/50 hover:bg-emerald-300/15"
     >
       <span className="w-20 shrink-0 text-xs font-semibold text-zinc-500">Link</span>

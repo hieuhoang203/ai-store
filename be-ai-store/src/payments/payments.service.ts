@@ -14,6 +14,7 @@ import {
 import { PrismaService } from '../database/prisma.service';
 import { DeliveriesService } from '../deliveries/deliveries.service';
 import { InventoryPasswordService } from '../inventories/inventory-password.service';
+import { InventoriesService } from '../inventories/inventories.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { PayosService } from './payos/payos.service';
 import { PayosWebhookBody } from './payos/payos.types';
@@ -32,6 +33,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     private readonly telegramService: TelegramService,
     private readonly inventoryPasswordService: InventoryPasswordService,
     private readonly deliveriesService: DeliveriesService,
+    private readonly inventoriesService: InventoriesService,
   ) {}
 
   onModuleInit() {
@@ -329,12 +331,12 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     }
 
     const content = this.renderDeliveryContent(resource.duLieuCongKhai);
-    await this.prisma.$transaction([
-      this.prisma.taiNguyenGiaoHang.update({
+    await this.prisma.$transaction(async (tx) => {
+      await tx.taiNguyenGiaoHang.update({
         where: { id: resource.id },
         data: { trangThai: TrangThaiTaiNguyen.DA_BAN, soLanDaDung: { increment: 1 }, banLuc: new Date() },
-      }),
-      this.prisma.giaoHang.create({
+      });
+      await tx.giaoHang.create({
         data: {
           chiTietDonHangId,
           taiNguyenId: resource.id,
@@ -344,8 +346,9 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           giaoLuc: new Date(),
           trangThai: TrangThaiGiaoHang.DA_GIAO,
         },
-      }),
-    ]);
+      });
+      await this.inventoriesService.refreshVariantDisplayStock(tx, goiDichVuId);
+    });
     return true;
   }
 
@@ -387,31 +390,33 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       config.remainingUses = Math.max(remainingUses - 1, 0);
     }
 
-    await this.prisma.goiPhuongThucGiaoHang.update({
-      where: { id: goiPhuongThuc.id },
-      data: { cauHinh: config },
-    });
-
     const gatewayToken = randomBytes(24).toString('hex');
     const publicUrl = this.configService.get<string>('APP_PUBLIC_URL') || 'http://localhost:8903';
     const gatewayUrl = `${publicUrl.replace(/\/$/, '')}/join/${gatewayToken}`;
 
-    await this.prisma.giaoHang.create({
-      data: {
-        chiTietDonHangId,
-        nguonGiaoHang: LoaiNguonGiaoHang.KHO_NOI_BO,
-        noiDungGiao: `Link nhận dịch vụ: ${gatewayUrl}`,
-        duLieuGiao: { gatewayUrl },
-        metadata: {
-          type: KieuPhuongThucGiaoHang.GUI_LINK,
-          gatewayToken,
-          encryptedInviteLink: finalEncryptedLink,
-          maxAccess: this.getPerDeliveryMaxAccess(config),
-          usedCount: 0,
+    await this.prisma.$transaction(async (tx) => {
+      await tx.goiPhuongThucGiaoHang.update({
+        where: { id: goiPhuongThuc.id },
+        data: { cauHinh: config },
+      });
+      await tx.giaoHang.create({
+        data: {
+          chiTietDonHangId,
+          nguonGiaoHang: LoaiNguonGiaoHang.KHO_NOI_BO,
+          noiDungGiao: `Link nhận dịch vụ: ${gatewayUrl}`,
+          duLieuGiao: { gatewayUrl },
+          metadata: {
+            type: KieuPhuongThucGiaoHang.GUI_LINK,
+            gatewayToken,
+            encryptedInviteLink: finalEncryptedLink,
+            maxAccess: this.getPerDeliveryMaxAccess(config),
+            usedCount: 0,
+          },
+          giaoLuc: new Date(),
+          trangThai: TrangThaiGiaoHang.DA_GIAO,
         },
-        giaoLuc: new Date(),
-        trangThai: TrangThaiGiaoHang.DA_GIAO,
-      },
+      });
+      await this.inventoriesService.refreshVariantDisplayStock(tx, goiPhuongThuc.goiDichVuId);
     });
 
     return true;

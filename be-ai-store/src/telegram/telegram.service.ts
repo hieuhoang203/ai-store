@@ -40,8 +40,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
     this.registerCommands(this.bot);
     await this.bot.telegram.setMyCommands([
-      { command: 'start', description: 'Mở AI Store' },
-      { command: 'support', description: 'Liên hệ hỗ trợ' },
+      { command: 'start', description: '🛍️ Mở AI Store' },
+      { command: 'support', description: '🛟 Liên hệ hỗ trợ' },
     ]);
     void this.bot
       .launch()
@@ -340,8 +340,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const launchButtons = this.isHttpsUrl(miniAppUrl) ? [[Markup.button.webApp('Mở AI Store', miniAppUrl)]] : [];
     await context.reply(
       launchButtons.length
-        ? 'Chào mừng bạn đến AI Store. Nhấn nút bên dưới để mở Mini App ngay trong Telegram.'
-        : 'Chào mừng bạn đến AI Store. Mini App cần URL HTTPS để mở trong Telegram.',
+        ? '✨ Chào mừng bạn đến AI Store!\n\n🛍️ Nhấn nút bên dưới để mở Mini App và chọn dịch vụ bạn cần nhé.'
+        : '✨ Chào mừng bạn đến AI Store!\n\n⚠️ Mini App cần URL HTTPS để mở trong Telegram.',
       Markup.inlineKeyboard([...launchButtons, [Markup.button.callback('Hỗ trợ', 'support')]]),
     );
   }
@@ -358,12 +358,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const workingTime = this.configService.get<string>('SUPPORT_WORKING_TIME') || '08:00 - 22:00 hằng ngày';
 
     return [
-      'THÔNG TIN HỖ TRỢ',
+      '🛟 THÔNG TIN HỖ TRỢ',
       '',
-      `Hỗ trợ: ${supportName}`,
-      `Số điện thoại: ${phoneNumber}`,
-      `Telegram: @${telegramUsername}`,
-      `Thời gian hỗ trợ: ${workingTime}`,
+      `👋 Hỗ trợ: ${supportName}`,
+      `📞 Số điện thoại: ${phoneNumber}`,
+      `💬 Telegram: @${telegramUsername}`,
+      `⏰ Thời gian hỗ trợ: ${workingTime}`,
+      '',
+      '💚 Cứ nhắn mình nếu bạn cần kiểm tra đơn, bảo hành hoặc tư vấn dịch vụ.',
     ].join('\n');
   }
 
